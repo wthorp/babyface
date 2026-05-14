@@ -1,0 +1,325 @@
+"""
+CLI entry points for the babyface pipeline.
+
+Commands:
+  babyface inspect-db        — summarise what's in digikam4.db + recognition.db
+  babyface detect-datestamps — scan photos for anomalous timestamps
+  babyface cluster           — extract DINOv2 embeddings and cluster by identity
+"""
+from __future__ import annotations
+from pathlib import Path
+
+import click
+from rich.console import Console
+from rich.table import Table
+from rich.progress import track
+
+console = Console()
+
+_DEFAULT_DK  = Path("digikam4.db")
+_DEFAULT_REC = Path("recognition.db")
+_DEFAULT_TH  = Path("thumbnails-digikam.db")
+
+
+@click.group()
+def main():
+    """Infant photo identity clustering tool."""
+    pass
+
+
+# ---------------------------------------------------------------------------
+# inspect-db
+# ---------------------------------------------------------------------------
+
+@main.command("inspect-db")
+@click.option("--db",             default=_DEFAULT_DK,  type=Path, show_default=True)
+@click.option("--recognition-db", default=_DEFAULT_REC, type=Path, show_default=True)
+@click.option("--photo-root",     default=None,         type=Path)
+def inspect_db(db: Path, recognition_db: Path, photo_root: Path | None):
+    """Print a summary of the DigiKam and recognition databases."""
+    from .db.digikam import load_photos, load_identities
+    from .embeddings.kernels import helion_available
+
+    console.print(f"[bold]Loading[/bold] {db} …")
+    photos     = load_photos(db, photo_root)
+    identities = load_identities(recognition_db)
+
+    t = Table(title="Database Summary")
+    t.add_column("Metric",  style="cyan")
+    t.add_column("Value",   style="green", justify="right")
+    t.add_row("Total photos",           f"{len(photos):,}")
+    t.add_row("Photos with faces",      f"{sum(1 for p in photos if p.faces):,}")
+    t.add_row("Total face regions",     f"{sum(len(p.faces) for p in photos):,}")
+    t.add_row("Tagged face regions",    f"{sum(1 for p in photos for f in p.faces if f.person_name):,}")
+    t.add_row("Albums",                 f"{len({p.album_path for p in photos}):,}")
+    t.add_row("Known identities",       f"{len(identities):,}")
+    t.add_row("Total face embeddings",  f"{sum(len(i.embeddings) for i in identities):,}")
+    t.add_row("Helion GPU kernels",     "[green]available[/green]" if helion_available() else "[yellow]CPU fallback[/yellow]")
+    console.print(t)
+
+    # Top 10 most-photographed people
+    counts: dict[str, int] = {}
+    for p in photos:
+        for f in p.faces:
+            if f.person_name:
+                counts[f.person_name] = counts.get(f.person_name, 0) + 1
+    if counts:
+        top = Table(title="Top 10 Tagged People")
+        top.add_column("Name", style="cyan")
+        top.add_column("Face regions", justify="right", style="green")
+        for name, cnt in sorted(counts.items(), key=lambda x: -x[1])[:10]:
+            top.add_row(name, f"{cnt:,}")
+        console.print(top)
+
+
+# ---------------------------------------------------------------------------
+# detect-datestamps
+# ---------------------------------------------------------------------------
+
+@main.command("detect-datestamps")
+@click.option("--db",          default=_DEFAULT_DK, type=Path, show_default=True)
+@click.option("--photo-root",  type=Path, default=None,
+              help="Mount point for photo files (enables EXIF reading).")
+@click.option("--limit",       default=0, type=int,
+              help="Process only first N photos (0 = all).")
+@click.option("--show-clean",  is_flag=True, default=False,
+              help="Also list photos with no anomalies.")
+def detect_datestamps(db: Path, photo_root: Path | None, limit: int, show_clean: bool):
+    """Detect photos with suspicious or inconsistent datestamps."""
+    from .db.digikam import load_photos
+    from .metadata.exif import enrich_photos_with_exif
+    from .metadata.datestamp import annotate_photos
+
+    photos = load_photos(db, photo_root)
+    if limit:
+        photos = photos[:limit]
+
+    if photo_root:
+        console.print(f"[bold]Reading EXIF from {len(photos)} photos …[/bold]")
+        enrich_photos_with_exif(photos)
+    else:
+        console.print("[yellow]No --photo-root supplied; skipping EXIF read (using DigiKam dates only).[/yellow]")
+
+    annotate_photos(photos)
+
+    flagged = [p for p in photos if p.datestamp_flags]
+    shown   = photos if show_clean else flagged
+
+    t = Table(title=f"Datestamp Anomalies  ({len(flagged)}/{len(photos)} flagged)")
+    t.add_column("File",          max_width=30)
+    t.add_column("Album",         max_width=30)
+    t.add_column("EXIF date",     style="cyan")
+    t.add_column("Folder date",   style="cyan")
+    t.add_column("Flags",         style="red")
+    t.add_column("Corrected",     style="green")
+    for p in shown[:100]:
+        t.add_row(
+            p.filename,
+            p.album_path,
+            str(p.exif_date.date()) if p.exif_date else "—",
+            str(p.folder_date)      if p.folder_date else "—",
+            "; ".join(p.datestamp_flags) or "clean",
+            str(p.corrected_date.date()) if p.corrected_date else "—",
+        )
+    console.print(t)
+    if len(shown) > 100:
+        console.print(f"[dim](showing first 100 of {len(shown)})[/dim]")
+
+
+# ---------------------------------------------------------------------------
+# cluster
+# ---------------------------------------------------------------------------
+
+@main.command("cluster")
+@click.option("--db",             default=_DEFAULT_DK,  type=Path, show_default=True)
+@click.option("--recognition-db", default=_DEFAULT_REC, type=Path, show_default=True)
+@click.option("--thumbnails-db",  default=_DEFAULT_TH,  type=Path, show_default=True)
+@click.option("--photo-root",     default=None, type=Path,
+              help="If mounted, full-res photos are used; otherwise thumbnails.")
+@click.option("--device",         default="cpu",  show_default=True,
+              help="'cuda', 'mps', or 'cpu'.")
+@click.option("--limit",          default=500, type=int, show_default=True,
+              help="Limit number of photos embedded (use 0 for all).")
+@click.option("--min-cluster",    default=3,   type=int, show_default=True)
+@click.option("--temporal-sigma", default=30.0, type=float, show_default=True,
+              help="Temporal window in days for fused similarity.")
+@click.option("--semi-supervised", is_flag=True, default=False,
+              help="Build DINOv2 identity centroids from recognition.db and use them as HDBSCAN seeds.")
+@click.option("--max-seeds",      default=20, type=int, show_default=True,
+              help="Max face crops per identity used to build DINOv2 centroids (--semi-supervised only).")
+@click.option("--save-embeddings", default=None, type=Path,
+              help="Save computed embeddings to this .pt file after extraction.")
+@click.option("--load-embeddings", default=None, type=Path,
+              help="Load embeddings from this .pt file instead of running DINOv2 (skips extraction).")
+@click.option("--pca-dims", default=0, type=int, show_default=True,
+              help="Reduce embeddings to this many PCA dimensions before clustering (0=off).")
+@click.option("--cluster-epsilon", default=0.0, type=float, show_default=True,
+              help="HDBSCAN cluster_selection_epsilon: merge clusters within this distance (0=off).")
+@click.option("--nearest-centroid", is_flag=True, default=False,
+              help="Skip HDBSCAN; assign each face to nearest identity centroid (requires --semi-supervised).")
+@click.option("--min-similarity", default=0.5, type=float, show_default=True,
+              help="Cosine similarity threshold for --nearest-centroid assignment (0–1).")
+@click.option("--baby-names", required=True, multiple=True, metavar="NAME",
+              help="Name to report a per-person cluster breakdown for. Repeat for multiple: "
+                   "--baby-names Alice --baby-names Bob.")
+@click.option("--export-html", default=None, type=Path, metavar="PATH",
+              help="Write a self-contained HTML gallery of face crops grouped by cluster to PATH.")
+def cluster(
+    db, recognition_db, thumbnails_db, photo_root,
+    device, limit, min_cluster, temporal_sigma,
+    semi_supervised, max_seeds, save_embeddings, load_embeddings, pca_dims, cluster_epsilon,
+    nearest_centroid, min_similarity, baby_names, export_html,
+):
+    """Extract DINOv2 patch embeddings and cluster faces by identity."""
+    from .db.digikam import load_photos, load_identities
+    from .metadata.datestamp import annotate_photos
+    from .embeddings.extract import EmbeddingExtractor
+    from .cluster.identity import run_clustering_pipeline, build_identity_dino_centroids, run_nearest_centroid_pipeline
+
+    console.print("[bold]Loading database …[/bold]")
+    photos     = load_photos(db, photo_root)
+    if limit:
+        photos = photos[:limit]
+    identities = load_identities(recognition_db)
+    annotate_photos(photos)
+
+    if load_embeddings and load_embeddings.exists():
+        console.print(f"[bold]Loading embeddings from[/bold] {load_embeddings} …")
+        import torch as _torch
+        saved = _torch.load(load_embeddings, weights_only=True)
+        embeddings = saved["embeddings"]
+        console.print(f"  → {len(embeddings)} face embeddings loaded")
+        # Still need an extractor to build identity centroids when requested
+        identity_centroids = None
+        if semi_supervised:
+            if not recognition_db.exists():
+                console.print(f"[red]--semi-supervised: recognition-db {recognition_db} not found.[/red]")
+                return
+            extractor = EmbeddingExtractor(device=device)
+            th_db_for_seeds = thumbnails_db if thumbnails_db.exists() else None
+            console.print(
+                f"[bold]Building identity centroids[/bold] from {len(identities)} identities "
+                f"(max {max_seeds} crops each) …"
+            )
+            identity_centroids = build_identity_dino_centroids(
+                identities, extractor, db, th_db_for_seeds,
+                max_per_identity=max_seeds,
+                photo_root=photo_root,
+            )
+            console.print(f"  → {len(identity_centroids)} identity centroids built")
+            if identity_centroids:
+                id_name = {i.id: i.name for i in identities}
+                named = [id_name.get(k, str(k)) for k in sorted(identity_centroids)]
+                console.print(f"  Seeded: {', '.join(named[:20])}"
+                              + (f" … (+{len(named)-20} more)" if len(named) > 20 else ""))
+        else:
+            extractor = None
+    else:
+        console.print(f"[bold]Building DINOv2 extractor[/bold] (device={device}) …")
+        extractor = EmbeddingExtractor(device=device)
+
+        # Build identity centroids before embedding photos (reuses extractor)
+        identity_centroids = None
+        if semi_supervised:
+            if not recognition_db.exists():
+                console.print(f"[red]--semi-supervised: recognition-db {recognition_db} not found.[/red]")
+                return
+            th_db_for_seeds = thumbnails_db if thumbnails_db.exists() else None
+            console.print(
+                f"[bold]Building identity centroids[/bold] from {len(identities)} identities "
+                f"(max {max_seeds} crops each) …"
+            )
+            identity_centroids = build_identity_dino_centroids(
+                identities, extractor, db, th_db_for_seeds,
+                max_per_identity=max_seeds,
+                photo_root=photo_root,
+            )
+            console.print(f"  → {len(identity_centroids)} identity centroids built")
+            if identity_centroids:
+                id_name = {i.id: i.name for i in identities}
+                named = [id_name.get(k, str(k)) for k in sorted(identity_centroids)]
+                console.print(f"  Seeded: {', '.join(named[:20])}"
+                              + (f" … (+{len(named)-20} more)" if len(named) > 20 else ""))
+
+        console.print(f"[bold]Embedding faces across {len(photos)} photos …[/bold]")
+        th_db = thumbnails_db if thumbnails_db.exists() else None
+        embeddings = extractor.embed_all_faces(photos, thumbnails_db=th_db)
+        console.print(f"  → {len(embeddings)} face embeddings extracted")
+
+        if not embeddings:
+            console.print("[red]No embeddings produced — check photo-root / thumbnails-db path.[/red]")
+            return
+
+        if save_embeddings:
+            import torch as _torch
+            console.print(f"[bold]Saving embeddings to[/bold] {save_embeddings} …")
+            _torch.save({"embeddings": embeddings}, save_embeddings)
+            console.print(f"  → saved {len(embeddings)} embeddings")
+
+    if nearest_centroid:
+        if not identity_centroids:
+            console.print("[red]--nearest-centroid requires --semi-supervised to build identity centroids.[/red]")
+            return
+        console.print(f"[bold]Assigning faces to nearest centroid[/bold] (min_similarity={min_similarity}) …")
+        results = run_nearest_centroid_pipeline(
+            photos, embeddings, identities,
+            identity_centroids=identity_centroids,
+            min_similarity=min_similarity,
+        )
+    else:
+        results = run_clustering_pipeline(
+            photos, embeddings, identities,
+            identity_centroids=identity_centroids,
+            temporal_sigma=temporal_sigma,
+            min_cluster_size=min_cluster,
+            pca_dims=pca_dims,
+            cluster_epsilon=cluster_epsilon,
+        )
+
+    from collections import Counter, defaultdict
+    cluster_ids = [r.cluster_id for r in results]
+    counts = Counter(cluster_ids)
+
+    t = Table(title=f"Clustering Results  ({len(results)} faces, {len(counts)-1} clusters + noise)")
+    t.add_column("Cluster", justify="right")
+    t.add_column("Faces",   justify="right", style="green")
+    t.add_column("Assigned name", style="cyan")
+    t.add_row("noise (-1)", str(counts.get(-1, 0)), "—")
+    for cid in sorted(k for k in counts if k >= 0):
+        name = next(
+            (r.predicted_name for r in results if r.cluster_id == cid and r.predicted_name),
+            "unknown",
+        )
+        t.add_row(str(cid), str(counts[cid]), name or "?")
+    console.print(t)
+
+    # Per-person cluster-size breakdown for target identities
+    target_names = list(baby_names)
+    by_name: dict[str, list[int]] = defaultdict(list)
+    for r in results:
+        if r.predicted_name in target_names:
+            by_name[r.predicted_name].append(counts[r.cluster_id])
+    for name in target_names:
+        face_counts = sorted(set(by_name[name]), reverse=True)
+        n_clusters = len(set(
+            r.cluster_id for r in results if r.predicted_name == name and r.cluster_id >= 0
+        ))
+        total = sum(1 for r in results if r.predicted_name == name and r.cluster_id >= 0)
+        console.print(
+            f"[cyan]{name}[/cyan]: {n_clusters} clusters, {total} faces — "
+            f"top sizes: {face_counts[:10]}"
+        )
+
+    # HTML gallery export
+    if export_html:
+        from .export.html import export_html as _export_html
+        console.print(f"[bold]Exporting HTML gallery to[/bold] {export_html} …")
+        photos_by_id = {p.id: p for p in photos}
+        th_db = thumbnails_db if thumbnails_db.exists() else None
+        n_rendered = _export_html(
+            results,
+            photos_by_id,
+            output=export_html,
+            thumbnails_db=th_db,
+        )
+        console.print(f"  → [green]{n_rendered}[/green] face crops written — open [link={export_html.resolve().as_uri()}]{export_html}[/link]")
