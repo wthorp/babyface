@@ -17,6 +17,28 @@ The goal is to pre-cluster a library so that you're confirming identities rather
 - **`inspect-db`** — summarises your DigiKam databases: how many photos, face regions, tagged identities, and known embeddings.
 - **`detect-datestamps`** — scans your library for photos with suspicious or inconsistent timestamps (common with baby photos that include scans, imports, or cameras that had their clocks reset).
 - **`cluster`** — extracts embeddings for every face region across your library and groups them into clusters. Each cluster gets a predicted name if there are enough DigiKam-tagged faces to vote on it.
+- **`embed`** — computes face/scene embeddings for one or more vision models and caches them to disk (one file per model), so models can be A/B-compared without re-running.
+- **`label`** — fuses those embeddings with EXIF context (time, camera, GPS) using a gradient-boosted model to predict an identity for every face. Evaluates which models work best, then exports a review gallery and a predictions file.
+
+### Single model vs. multi-model fusion
+
+The original `cluster` command uses one model (DINOv2) and groups faces. The newer
+`embed` + `label` commands take a different, **transductive** approach aimed at labeling
+*this* library as accurately as possible:
+
+- **Several complementary signals**, fused: DINOv2 on the face crop (low-level texture —
+  the baby signal), an adult face recogniser (ArcFace/InsightFace), and a whole-image
+  scene encoder (SigLIP) for background/context — plus EXIF time, camera, and GPS.
+- **Late fusion with a gradient-boosted tree** that learns how much to trust each signal,
+  with [SHAP](https://github.com/shap/shap) explaining *which* signal drove each decision.
+- **Honest evaluation**: faces are scored against centroids built from *other* faces
+  (K-fold cross-fitting, no self-leakage), and accuracy is reported separately for
+  faces that share a photo session with a tagged face vs. **isolated** faces — the hard,
+  error-prone cases.
+- **Constraint reconciliation**: a person can't appear twice in one photo (resolved by
+  optimal assignment), and assignments that contradict an identity's established
+  time/camera/location track are flagged for review (e.g. "this is the only photo of
+  Eric ever taken 6000 km away — probably a misclassification").
 
 ## Requirements
 
@@ -72,6 +94,56 @@ The goal is to pre-cluster a library so that you're confirming identities rather
 | `--pca-dims` | 0 | Reduce embedding dimensions before clustering (speeds things up) |
 
 Run `./run.sh cluster --help` for the full list.
+
+### Multi-model fusion labeling
+
+The fusion pipeline needs extra dependencies (the boosting model and the optional
+backbones). Install them with:
+
+```bash
+uv sync --extra fusion
+```
+
+Then embed once per model, and label as many times as you like:
+
+```bash
+# 1. Compute & cache embeddings (slow; one file per model under embeddings/)
+./run.sh embed --backbones dinov2 --backbones arcface --backbones siglip \
+  --device cuda --photo-root /path/to/photos
+
+# 2. Fuse + evaluate + label (fast; iterate on thresholds and outputs)
+./run.sh label \
+  --reject-threshold 0.5 \
+  --export-html review.html \
+  --writeback predictions.json
+```
+
+`run2.sh` wraps both steps with sensible defaults (it embeds only if the cache is
+missing, then labels). Set `FORCE_EMBED=1` to re-embed, or `DEVICE=cuda` to use a GPU.
+
+**Outputs:**
+
+- A **leaderboard** table — per-model vs. fused top-1 accuracy, split into session-linked
+  and isolated faces. This is the "which model is best?" answer.
+- A **review gallery** (`--export-html`) — faces grouped by predicted identity, with a
+  "Needs review" section collecting every coherence-flagged face, and a marker where a
+  prediction disagrees with an existing DigiKam tag.
+- A **predictions file** (`--writeback`, `.json` or `.csv`) — every face with its
+  predicted identity, confidence, and flags, for review or import. Nothing is written
+  back to DigiKam.
+
+| Flag | Default | What it does |
+|---|---|---|
+| `--backbones` | `dinov2` | Model(s) to embed (`embed`). Repeat for several. |
+| `--reject-threshold` | 0.5 | Min fused score to assign an identity; below this → Unknown |
+| `--coherence-lambda` | 0.0 | 0 = flags are advisory; >0 down-weights incoherent assignments |
+| `--folds` | 5 | K for cross-fitting / out-of-fold evaluation |
+| `--audit-tagged` | off | Also re-predict already-tagged faces to surface likely mislabels |
+| `--no-eval` | — | Skip the leaderboard and go straight to labeling |
+
+> **macOS note:** PyTorch and LightGBM ship conflicting OpenMP runtimes; importing
+> torch first can crash. The `label` command and `run2.sh` import LightGBM first to
+> avoid this. Linux/CUDA machines are unaffected.
 
 ## Notes
 

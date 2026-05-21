@@ -80,3 +80,10 @@ dmypy.json
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+
+# Generated outputs (galleries, prediction exports, embedding caches)
+/clusters.html
+/review.html
+/predictions.json
+/predictions.csv
+/embeddings/

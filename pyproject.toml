@@ -35,6 +35,15 @@ dev = [
     "ipython",
     "jupyter",
 ]
+# Late-fusion labeling backbones + fusion model. Each is optional and loaded
+# lazily (see embeddings/registry.py); install only the ones you benchmark.
+fusion = [
+    "transformers>=4.45",   # SigLIP scene encoder
+    "insightface>=0.7",     # ArcFace face recogniser
+    "onnxruntime>=1.17",    # InsightFace runtime (CPU; use onnxruntime-gpu on CUDA)
+    "lightgbm>=4.0",        # gradient-boosted fusion model
+    "shap>=0.45",           # per-decision explanations
+]
 
 [project.scripts]
 babyface = "babyface.cli:main"

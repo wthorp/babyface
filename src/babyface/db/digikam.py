@@ -191,6 +191,26 @@ def load_photos(
     return photos
 
 
+def load_gps(db_path: Path = DIGIKAM_DB) -> dict[int, tuple[float, float]]:
+    """
+    Load GPS coordinates from DigiKam's ImagePositions table.
+
+    Only ~10% of the library is geotagged, so this is kept out of the main
+    load_photos hot path and joined in on demand by the feature builder.
+    Returns {photo_id: (latitude, longitude)} for photos that have a fix.
+    """
+    conn = _open_db(db_path)
+    conn.row_factory = sqlite3.Row
+    out: dict[tuple[int], tuple[float, float]] = {}
+    for row in conn.execute(
+        "SELECT imageid, latitudeNumber, longitudeNumber FROM ImagePositions"
+        " WHERE latitudeNumber IS NOT NULL AND longitudeNumber IS NOT NULL"
+    ):
+        out[row["imageid"]] = (float(row["latitudeNumber"]), float(row["longitudeNumber"]))
+    conn.close()
+    return out
+
+
 def load_identities(db_path: Path = RECOGNITION_DB) -> list[Identity]:
     """
     Load known people + their 128-dim face embeddings from recognition.db.

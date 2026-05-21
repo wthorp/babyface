@@ -323,3 +323,190 @@ def cluster(
             thumbnails_db=th_db,
         )
         console.print(f"  → [green]{n_rendered}[/green] face crops written — open [link={export_html.resolve().as_uri()}]{export_html}[/link]")
+
+
+# ---------------------------------------------------------------------------
+# embed — compute & cache per-backbone embeddings (slow; run once per model)
+# ---------------------------------------------------------------------------
+
+@main.command("embed")
+@click.option("--db",            default=_DEFAULT_DK, type=Path, show_default=True)
+@click.option("--thumbnails-db", default=_DEFAULT_TH, type=Path, show_default=True)
+@click.option("--photo-root",    default=None, type=Path,
+              help="If mounted, full-res photos are used; otherwise thumbnails.")
+@click.option("--cache-dir",     default=Path("embeddings"), type=Path, show_default=True,
+              help="Directory for per-model embedding caches (emb_<id>.pt).")
+@click.option("--backbones", "-b", multiple=True, default=("dinov2",), show_default=True,
+              help="Backbone keys to embed. Repeatable. Known: dinov2, arcface, siglip.")
+@click.option("--device",        default="cpu", show_default=True, help="cpu, cuda, or mps.")
+@click.option("--limit",         default=0, type=int, show_default=True,
+              help="Embed only the first N photos (0 = all).")
+def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
+    """Compute embeddings for one or more backbones and cache them to disk."""
+    from .db.digikam import load_photos
+    from .embeddings import registry as reg
+
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    console.print("[bold]Loading database …[/bold]")
+    photos = load_photos(db, photo_root)
+    if limit:
+        photos = photos[:limit]
+    th_db = thumbnails_db if thumbnails_db.exists() else None
+    console.print(f"  → {len(photos):,} photos "
+                  f"({sum(len(p.faces) for p in photos):,} face regions)")
+
+    for key in backbones:
+        if key not in reg.REGISTRY:
+            console.print(f"[red]Unknown backbone {key!r}; known: {sorted(reg.REGISTRY)}[/red]")
+            continue
+        console.print(f"[bold]Loading backbone[/bold] {key} (device={device}) …")
+        try:
+            backbone = reg.get_backbone(key, device=device)
+        except ImportError as e:
+            console.print(f"[red]{e}[/red]")
+            continue
+        console.print(f"[bold]Embedding with[/bold] {backbone.id} "
+                      f"(input={backbone.input}, dim={backbone.dim}) …")
+        embs = reg.embed_photos(backbone, photos, thumbnails_db=th_db)
+        out = reg.cache_path(cache_dir, backbone.id)
+        reg.save_embeddings(out, backbone, embs)
+        console.print(f"  → {len(embs):,} embeddings saved to [green]{out}[/green]")
+
+
+# ---------------------------------------------------------------------------
+# label — fuse cached embeddings + EXIF, evaluate, and label the library
+# ---------------------------------------------------------------------------
+
+@main.command("label")
+@click.option("--db",            default=_DEFAULT_DK, type=Path, show_default=True)
+@click.option("--thumbnails-db", default=_DEFAULT_TH, type=Path, show_default=True)
+@click.option("--photo-root",    default=None, type=Path)
+@click.option("--cache-dir",     default=Path("embeddings"), type=Path, show_default=True,
+              help="Directory holding emb_<id>.pt caches written by `embed`.")
+@click.option("--reject-threshold", default=0.5, type=float, show_default=True,
+              help="Min fused score to assign an identity (else Unknown).")
+@click.option("--coherence-lambda", default=0.0, type=float, show_default=True,
+              help="0 = coherence flags advisory only; >0 soft-down-weights incoherent pairs.")
+@click.option("--top-k",         default=15, type=int, show_default=True,
+              help="Candidate identities scored per face.")
+@click.option("--folds",         default=5, type=int, show_default=True,
+              help="K for cross-fitting / out-of-fold evaluation.")
+@click.option("--eval/--no-eval", default=True, show_default=True,
+              help="Run the out-of-fold leaderboard before labeling.")
+@click.option("--audit-tagged", is_flag=True, default=False,
+              help="Also re-predict already-tagged faces to surface likely mislabels.")
+@click.option("--export-html",   default=None, type=Path, help="Write a review gallery to PATH.")
+@click.option("--writeback",     default=None, type=Path, help="Write predictions to PATH (.json/.csv).")
+def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_lambda,
+          top_k, folds, eval, audit_tagged, export_html, writeback):
+    """Late-fusion identity labeling over cached embeddings + EXIF."""
+    import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
+    import torch
+
+    from .db.digikam import load_photos, load_gps
+    from .metadata.datestamp import annotate_photos
+    from .fusion.features import _UNKNOWN_TAGS
+    from .fusion.fusion import crossfit_design, evaluate, train_final
+    from .fusion.constraints import reconcile, write_predictions
+
+    console.print("[bold]Loading database …[/bold]")
+    photos = load_photos(db, photo_root)
+    annotate_photos(photos)
+    photo_map = {p.id: p for p in photos}
+    gps_map = load_gps(db)
+    console.print(f"  → {len(photos):,} photos, {len(gps_map):,} geotagged")
+
+    # Load every per-model embedding cache present.
+    embeddings_by_backbone: dict[str, dict] = {}
+    scene_backbones: set[str] = set()
+    caches = sorted(cache_dir.glob("emb_*.pt"))
+    if not caches:
+        console.print(f"[red]No emb_*.pt caches in {cache_dir}. Run `babyface embed` first.[/red]")
+        return
+    for path in caches:
+        blob = torch.load(path, weights_only=True)
+        bid = blob["backbone_id"]
+        embeddings_by_backbone[bid] = blob["embeddings"]
+        if blob.get("input") == "whole_image":
+            scene_backbones.add(bid)
+        console.print(f"  loaded {len(blob['embeddings']):,} from {path.name}  ({bid})")
+
+    # Partition faces by tag status.
+    def _is_unknown(n): return (not n) or n.strip().lower() in _UNKNOWN_TAGS
+    known, unknown, untagged = [], [], []
+    for p in photos:
+        for i, f in enumerate(p.faces):
+            if f.person_name is None:
+                untagged.append((p.id, i, None))
+            elif _is_unknown(f.person_name):
+                unknown.append((p.id, i, f.person_name))
+            else:
+                known.append((p.id, i, f.person_name))
+    train_faces = known + unknown
+    console.print(f"  faces — known: {len(known):,}  unknown: {len(unknown):,}  untagged: {len(untagged):,}")
+
+    # Out-of-fold evaluation / leaderboard.
+    if eval:
+        console.print("[bold]Cross-fitting + evaluating …[/bold]")
+        design = crossfit_design(train_faces, embeddings_by_backbone, scene_backbones,
+                                 photo_map, gps_map, k=folds, top_k=top_k)
+        report = evaluate(design, reject_threshold=reject_threshold)
+        _print_leaderboard(report)
+
+    # Train final model and label.
+    console.print("[bold]Training final fusion model …[/bold]")
+    model = train_final(train_faces, embeddings_by_backbone, scene_backbones,
+                        photo_map, gps_map, k=folds, top_k=top_k)
+
+    targets = untagged + unknown + (known if audit_tagged else [])
+    console.print(f"[bold]Labeling {len(targets):,} faces[/bold] "
+                  f"(reject<{reject_threshold}, coherence_lambda={coherence_lambda}) …")
+    assignments = reconcile(model, targets, embeddings_by_backbone, photo_map, gps_map,
+                            reject_threshold=reject_threshold,
+                            coherence_lambda=coherence_lambda, top_k=top_k)
+    n_named = sum(1 for a in assignments if a.identity)
+    n_flagged = sum(1 for a in assignments if a.flags)
+    console.print(f"  → {n_named:,} assigned an identity, "
+                  f"{len(assignments) - n_named:,} left Unknown, {n_flagged:,} flagged")
+
+    if writeback:
+        n = write_predictions(assignments, photo_map, writeback)
+        console.print(f"  → {n:,} predictions written to [green]{writeback}[/green]")
+
+    if export_html:
+        from .export.html import export_review_html
+        th_db = thumbnails_db if thumbnails_db.exists() else None
+        n = export_review_html(assignments, photo_map, export_html, thumbnails_db=th_db)
+        console.print(f"  → [green]{n:,}[/green] crops — open "
+                      f"[link={export_html.resolve().as_uri()}]{export_html}[/link]")
+
+
+def _print_leaderboard(report) -> None:
+    """Render the per-model vs fused out-of-fold leaderboard."""
+    def pct(x):
+        return "—" if x != x else f"{x:.1%}"     # x!=x catches NaN
+
+    t = Table(title=f"Out-of-fold top-1 accuracy  ({report.n_faces:,} faces)")
+    t.add_column("Model", style="cyan")
+    t.add_column("All", justify="right")
+    t.add_column("Session-linked", justify="right", style="green")
+    t.add_column("Isolated", justify="right", style="yellow")
+    for name, r in sorted(report.per_model.items(), key=lambda kv: -(kv[1]["top1"]["all"] or 0)):
+        t.add_row(name, pct(r["top1"]["all"]), pct(r["top1"]["linked"]), pct(r["top1"]["isolated"]))
+    f = report.fused["top1"]
+    t.add_row("[bold]FUSED (GBM)[/bold]",
+              f"[bold]{pct(f['all'])}[/bold]", f"[bold]{pct(f['linked'])}[/bold]",
+              f"[bold]{pct(f['isolated'])}[/bold]")
+    console.print(t)
+
+    rej = report.fused.get("reject", {})
+    if rej:
+        console.print(f"[dim]Reject accuracy on Unknown faces — "
+                      f"all {pct(rej.get('all'))}, isolated {pct(rej.get('isolated'))}[/dim]")
+    if report.shap_importance:
+        top = ", ".join(f"{n} {v:.3f}" for n, v in report.shap_importance[:6])
+        console.print(f"[dim]SHAP importance: {top}[/dim]")
+
+
+if __name__ == "__main__":
+    main()
