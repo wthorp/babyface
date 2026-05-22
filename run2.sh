@@ -21,13 +21,27 @@ if ! [ -x "$HOME/.local/bin/uv" ]; then
   curl -LsSf https://astral.sh/uv/install.sh | sh
 fi
 
-# Fusion pipeline needs the extra deps (lightgbm, shap, and the backbones).
-uv sync --quiet --no-install-project --extra fusion
+# Fusion pipeline needs the extra deps (lightgbm, transformers; shap is optional).
+# Sync core fusion deps only — shap pulls in llvmlite which can conflict on some platforms.
+uv pip install --quiet lightgbm transformers
+
+# LightGBM needs libgomp; on systems without system OpenMP, use torch's bundled copy.
+TORCH_LIB="$(uv run python -c 'import torch, pathlib; print(pathlib.Path(torch.__file__).parent / "lib")' 2>/dev/null || true)"
+if [ -d "$TORCH_LIB" ]; then
+  export LD_LIBRARY_PATH="${TORCH_LIB}${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+fi
 
 # Ensure src/ is importable in the venv via a .pth file (self-healing).
 REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
 SITE_PACKAGES="$(uv run python -c 'import sysconfig; print(sysconfig.get_paths()["purelib"])')"
 echo "$REPO_ROOT/src" > "$SITE_PACKAGES/babyface.pth"
+
+# Keep the container alive: NanoClaw kills the container if /workspace/.heartbeat
+# isn't touched for 30 minutes. Long embeds leave Claude Code idle long enough
+# to trigger this. Touch every 5 min for the lifetime of this script.
+(while true; do touch /workspace/.heartbeat; sleep 300; done) &
+HEARTBEAT_PID=$!
+trap "kill $HEARTBEAT_PID 2>/dev/null" EXIT
 
 DEVICE="${DEVICE:-cpu}"
 BACKBONES="${BACKBONES:-dinov2 arcface siglip}"

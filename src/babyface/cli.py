@@ -367,9 +367,13 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
             continue
         console.print(f"[bold]Embedding with[/bold] {backbone.id} "
                       f"(input={backbone.input}, dim={backbone.dim}) …")
-        embs = reg.embed_photos(backbone, photos, thumbnails_db=th_db)
         out = reg.cache_path(cache_dir, backbone.id)
+        ckpt = out.with_suffix(".ckpt.pt")  # streams to disk; auto-resumed on restart
+        embs = reg.embed_photos(backbone, photos, thumbnails_db=th_db,
+                                checkpoint_path=ckpt)
         reg.save_embeddings(out, backbone, embs)
+        if ckpt.exists():
+            ckpt.unlink()  # clean up checkpoint after successful save
         console.print(f"  → {len(embs):,} embeddings saved to [green]{out}[/green]")
 
 

@@ -130,7 +130,9 @@ class SiglipSceneBackbone(Backbone):
         for start in range(0, len(images), batch_size):
             chunk = [im.convert("RGB") for im in images[start:start + batch_size]]
             inputs = self._processor(images=chunk, return_tensors="pt").to(self.device)
-            feats = self._model.get_image_features(**inputs)  # [B, D]
+            feats = self._model.get_image_features(**inputs)  # [B, D] or ModelOutput in transformers 5+
+            if not isinstance(feats, torch.Tensor):
+                feats = feats.pooler_output if hasattr(feats, "pooler_output") else feats[0]
             out.append(feats.float().cpu())
         return torch.cat(out, dim=0)
 
@@ -263,6 +265,7 @@ def embed_photos(
     batch_size: int = 32,
     chunk_size: int = 500,
     progress_every: int = 5000,
+    checkpoint_path: Path | None = None,
 ) -> dict[tuple[int, int], torch.Tensor]:
     """
     Run a backbone over `photos`, dispatching on backbone.input:
@@ -275,29 +278,59 @@ def embed_photos(
     backbone (e.g. ArcFace finding no face) are dropped here, so absence of a
     key means "this backbone had no signal for that face" — which downstream
     feature extraction treats as a missing feature, not a zero.
+
+    For whole_image backbones, chunk_size is capped at batch_size to keep peak
+    memory bounded — full-res photos can be 36 MB+ decompressed, so we never
+    accumulate more than one model batch worth of images at a time.
+
+    If checkpoint_path is given, embeddings are streamed to disk every
+    progress_every photos. On restart the checkpoint is loaded automatically,
+    and already-embedded photo IDs are skipped — so a crash loses at most one
+    progress_every window of work.
     """
     from ..db.digikam import open_photo_image
     from .extract import crop_face
 
+    # Whole-image backbones load full-res photos; cap accumulation to one
+    # model batch so peak RAM ≈ batch_size × max_resized_image, not chunk_size.
+    effective_chunk = batch_size if backbone.input == "whole_image" else chunk_size
+
+    # Resume from checkpoint if available.
     result: dict[tuple[int, int], torch.Tensor] = {}
+    if checkpoint_path and Path(checkpoint_path).exists():
+        try:
+            ckpt = torch.load(checkpoint_path, weights_only=True)
+            result = ckpt.get("embeddings", {})
+            print(f"  [checkpoint] resumed {len(result)} embeddings from {checkpoint_path}",
+                  flush=True)
+        except Exception as e:
+            print(f"  [checkpoint] could not load {checkpoint_path}: {e} — starting fresh",
+                  flush=True)
+
+    already_done: set[int] = {k[0] for k in result}  # photo ids already embedded
     done = 0
 
-    for chunk_start in range(0, len(photos), chunk_size):
-        chunk = photos[chunk_start:chunk_start + chunk_size]
+    for chunk_start in range(0, len(photos), effective_chunk):
+        chunk = photos[chunk_start:chunk_start + effective_chunk]
         keys: list[tuple[int, int]] = []
         imgs: list[Image.Image] = []
 
         for photo in chunk:
+            if photo.id in already_done:
+                continue
             try:
                 img = open_photo_image(photo, thumbnails_db) if thumbnails_db else (
                     Image.open(photo.full_path) if photo.full_path.exists() else None)
                 if img is None:
                     continue
                 img_rgb = img.convert("RGB")
+                del img  # free the original; img_rgb may still be full-res
             except Exception:
                 continue
 
             if backbone.input == "whole_image":
+                # Resize to 256px — SigLIP only needs 224px, so this loses nothing.
+                img_rgb.thumbnail((256, 256), Image.LANCZOS)
                 keys.append((photo.id, -1))
                 imgs.append(img_rgb)
             else:  # face_crop
@@ -314,10 +347,15 @@ def embed_photos(
             for i, key in enumerate(keys):
                 if bool(ok[i]):
                     result[key] = embs[i]
+            del imgs  # release resized images after embedding
 
         done += len(chunk)
-        if done % progress_every == 0 or chunk_start + chunk_size >= len(photos):
+        if done % progress_every == 0 or chunk_start + effective_chunk >= len(photos):
             print(f"  [{backbone.id}: {done}/{len(photos)} photos, {len(result)} embedded]",
                   flush=True)
+            if checkpoint_path:
+                torch.save({"backbone_id": backbone.id, "kind": backbone.kind,
+                            "input": backbone.input, "dim": backbone.dim,
+                            "embeddings": result}, checkpoint_path)
 
     return result
