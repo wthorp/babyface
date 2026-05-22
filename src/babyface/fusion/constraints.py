@@ -252,6 +252,7 @@ def write_predictions(assignments: list[Assignment], photo_map: dict, path) -> i
             "original_tag": (face.person_name if face else None),
             "predicted_identity": a.identity,
             "score": round(a.score, 4),
+            "ambiguous": a.ambiguous,
             "flags": a.flags,
         })
 
@@ -259,11 +260,12 @@ def write_predictions(assignments: list[Assignment], photo_map: dict, path) -> i
         with path.open("w", newline="", encoding="utf-8") as f:
             w = csv.writer(f)
             w.writerow(["photo_id", "filename", "album_path", "face_idx", "bbox",
-                        "original_tag", "predicted_identity", "score", "flags"])
+                        "original_tag", "predicted_identity", "score", "ambiguous", "flags"])
             for r in recs:
                 w.writerow([r["photo_id"], r["filename"], r["album_path"], r["face_idx"],
                             json.dumps(r["bbox"]), r["original_tag"] or "",
-                            r["predicted_identity"] or "", r["score"], "; ".join(r["flags"])])
+                            r["predicted_identity"] or "", r["score"], r["ambiguous"],
+                            "; ".join(r["flags"])])
     else:
         path.write_text(json.dumps(recs, indent=2), encoding="utf-8")
     return len(recs)

@@ -403,10 +403,15 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
               help="Run the out-of-fold leaderboard before labeling.")
 @click.option("--audit-tagged", is_flag=True, default=False,
               help="Also re-predict already-tagged faces to surface likely mislabels.")
+@click.option("--pseudo-labels",          default=None, type=Path,
+              help="Predictions JSON from a prior run. High-confidence assignments become training data.")
+@click.option("--pseudo-label-min-score", default=0.75, type=float, show_default=True,
+              help="Min score threshold for accepting a pseudo-label (used when 'ambiguous' field absent).")
 @click.option("--export-html",   default=None, type=Path, help="Write a review gallery to PATH.")
 @click.option("--writeback",     default=None, type=Path, help="Write predictions to PATH (.json/.csv).")
 def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_lambda,
-          ambiguous_margin, min_face_px, top_k, folds, eval, audit_tagged, export_html, writeback):
+          ambiguous_margin, min_face_px, top_k, folds, eval, audit_tagged,
+          pseudo_labels, pseudo_label_min_score, export_html, writeback):
     """Late-fusion identity labeling over cached embeddings + EXIF."""
     import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
     import torch
@@ -454,7 +459,28 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
                 unknown.append((p.id, i, f.person_name))
             else:
                 known.append((p.id, i, f.person_name))
-    train_faces = known + unknown
+    pseudo_known: list[tuple[int, int, str]] = []
+    if pseudo_labels and pseudo_labels.exists():
+        import json as _json
+        raw = _json.loads(pseudo_labels.read_text())
+        known_keys = {(pid, fidx) for pid, fidx, _ in known}
+        for rec in raw:
+            ident = rec.get("predicted_identity")
+            if not ident or _is_unknown(ident):
+                continue
+            if (rec["photo_id"], rec["face_idx"]) in known_keys:
+                continue  # already a DigiKam-labeled face
+            if rec.get("flags"):
+                continue  # skip coherence-flagged predictions
+            # Use the explicit ambiguous field when available; fall back to score threshold.
+            if "ambiguous" in rec:
+                if rec["ambiguous"]:
+                    continue
+            elif rec["score"] < pseudo_label_min_score:
+                continue
+            pseudo_known.append((rec["photo_id"], rec["face_idx"], ident))
+        console.print(f"  pseudo-labels: {len(pseudo_known):,} added from {pseudo_labels.name}")
+    train_faces = known + unknown + pseudo_known
     size_note = f"  filtered {n_filtered_size:,} faces < {min_face_px}px\n" if min_face_px > 0 else ""
     console.print(f"{size_note}  faces — known: {len(known):,}  unknown: {len(unknown):,}  untagged: {len(untagged):,}")
 
