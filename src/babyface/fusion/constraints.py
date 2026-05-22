@@ -119,6 +119,7 @@ class Assignment:
     identity: str | None          # None = Unknown / rejected
     score: float
     flags: list[str] = field(default_factory=list)
+    ambiguous: bool = False       # top-2 within ambiguous_margin of top-1
 
 
 def resolve_photo(
@@ -128,6 +129,7 @@ def resolve_photo(
     pgps: tuple[float, float] | None = None,
     reject_threshold: float = 0.5,
     coherence_lambda: float = 0.0,
+    ambiguous_margin: float = 0.0,
 ) -> list[Assignment]:
     """
     Assign identities to the faces of one photo with no identity used twice.
@@ -178,6 +180,18 @@ def resolve_photo(
         else:
             best = max(face_scores[fidx].values()) if face_scores[fidx] else 0.0
             out.append(Assignment(photo.id, fidx, None, float(best), []))
+
+    if ambiguous_margin > 0.0:
+        for a in out:
+            if a.identity is None:
+                continue
+            fscores = face_scores.get(a.face_idx, {})
+            assigned_score = fscores.get(a.identity, 0.0)
+            rivals = [s for n, s in fscores.items()
+                      if n != a.identity and n.strip().lower() not in _UNKNOWN_TAGS]
+            if rivals and assigned_score - max(rivals) < ambiguous_margin:
+                a.ambiguous = True
+
     return out
 
 
@@ -189,6 +203,7 @@ def reconcile(
     gps_map: dict | None = None,
     reject_threshold: float = 0.5,
     coherence_lambda: float = 0.0,
+    ambiguous_margin: float = 0.0,
     top_k: int = 15,
 ) -> list[Assignment]:
     """Score faces, then resolve mutual exclusion + coherence per photo."""
@@ -207,7 +222,7 @@ def reconcile(
         results.extend(resolve_photo(
             photo, face_scores, model.identity_models,
             pgps=gps_map.get(pid), reject_threshold=reject_threshold,
-            coherence_lambda=coherence_lambda,
+            coherence_lambda=coherence_lambda, ambiguous_margin=ambiguous_margin,
         ))
     return results
 

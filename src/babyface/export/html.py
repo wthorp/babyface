@@ -17,6 +17,7 @@ import base64
 import io
 from collections import defaultdict
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from PIL import Image
 
@@ -246,19 +247,22 @@ def export_review_html(
     photos_by_id: dict[int, Photo],
     output: Path,
     thumbnails_db: Path | None = None,
+    unknown_clusters: list[ClusteredFace] | None = None,
 ) -> int:
     """
     Review gallery for the fusion labeler.  Faces are grouped by *predicted*
-    identity (largest first, Unknown/rejected last), with a "Needs review"
-    section up top collecting every face that drew a coherence flag — the
-    likely-misclassification queue.  Each thumb shows the predicted name,
-    confidence, the original DigiKam tag (for comparison), and any flags.
+    identity (largest first, Unknown/rejected last), with special sections up
+    top for coherence-flagged faces and ambiguous near-ties, and an Unknown
+    Clusters section at the bottom (HDBSCAN groups within the Unknown pool).
 
     Returns the number of crops rendered.
     """
-    flagged = [a for a in assignments if a.flags]
+    flagged   = [a for a in assignments if a.flags]
+    ambiguous = [a for a in assignments if a.ambiguous]
     by_ident: dict[str, list] = defaultdict(list)
     for a in assignments:
+        if a.ambiguous:
+            continue   # ambiguous faces go in their own section, not per-identity
         by_ident[a.identity or "Unknown / rejected"].append(a)
 
     order = sorted((k for k in by_ident if k != "Unknown / rejected"),
@@ -306,6 +310,16 @@ def export_review_html(
           <div class="grid">{"".join(parts)}</div>
         </details>""")
 
+    if ambiguous:
+        parts = [t for t in (_thumb(a) for a in ambiguous) if t]
+        if parts:
+            sections.append(f"""
+        <details open class="cluster ambig">
+          <summary><span class="cluster-label">❓ Ambiguous — top-2 near-tie, manual resolution needed</span>
+          <span class="badge badge-ambig">{len(ambiguous)} faces</span></summary>
+          <div class="grid">{"".join(parts)}</div>
+        </details>""")
+
     for name in order:
         items = by_ident[name]
         parts = [t for t in (_thumb(a) for a in items) if t]
@@ -318,6 +332,41 @@ def export_review_html(
           <summary><span class="cluster-label">{_esc(name)}</span>
           <span class="badge {badge}">{len(items)} faces</span></summary>
           <div class="grid">{"".join(parts)}</div>
+        </details>""")
+
+    if unknown_clusters:
+        by_uc: dict[int, list[ClusteredFace]] = defaultdict(list)
+        for cf in unknown_clusters:
+            if cf.cluster_id >= 0:
+                by_uc[cf.cluster_id].append(cf)
+        for cid in sorted(by_uc, key=lambda c: -len(by_uc[c])):
+            cfaces = by_uc[cid]
+            cthumbs: list[str] = []
+            for cf in cfaces:
+                photo = photos_by_id.get(cf.photo_id)
+                if photo is None or cf.face_idx >= len(photo.faces):
+                    continue
+                data_url = _crop_to_b64(photo, cf.face_idx, thumbnails_db)
+                if data_url is None:
+                    continue
+                rendered += 1
+                dk = photo.faces[cf.face_idx].person_name or ""
+                date_str = str(photo.digikam_date or photo.folder_date or "")[:10]
+                tip = " | ".join(filter(None, [
+                    f"unknown group {cid}", f"conf {cf.confidence:.0%}", dk, date_str,
+                ]))
+                cthumbs.append(
+                    f'<div class="thumb" title="{_esc(tip)}">'
+                    f'<img src="{data_url}" loading="lazy">'
+                    f'{"<div class=label>" + _esc(dk) + "</div>" if dk else ""}'
+                    f'</div>'
+                )
+            if cthumbs:
+                sections.append(f"""
+        <details class="cluster unk-cluster">
+          <summary><span class="cluster-label">Unknown group {cid}</span>
+          <span class="badge badge-unknown">{len(cfaces)} faces</span></summary>
+          <div class="grid">{"".join(cthumbs)}</div>
         </details>""")
 
     html = f"""<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">
@@ -335,7 +384,7 @@ def export_review_html(
   .cluster[open]>summary::before{{transform:rotate(90deg)}}
   .cluster-label{{font-size:.95rem;flex:1}}
   .badge{{font-size:.75rem;padding:.2em .6em;border-radius:999px;font-weight:600}}
-  .badge-named{{background:#1a3a5c;color:#7ec8e3}} .badge-noise{{background:#2a1a1a;color:#b06060}}
+  .badge-named{{background:#1a3a5c;color:#7ec8e3}} .badge-noise{{background:#2a1a1a;color:#b06060}} .badge-ambig{{background:#2a1a3a;color:#c07ee3}} .badge-unknown{{background:#2a2a1a;color:#b0a060}}
   .grid{{display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:#161616}}
   .thumb{{position:relative;border-radius:4px;overflow:hidden;background:#222}}
   .thumb.mismatch{{outline:2px solid #d08010}}
@@ -344,7 +393,7 @@ def export_review_html(
   .thumb .label{{position:absolute;bottom:0;left:0;right:0;background:rgba(0,0,0,.65);color:#fff;font-size:.65rem;padding:2px 4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}}
 </style></head><body>
 <h1>babyface — review gallery</h1>
-<div class="stats">{len(assignments)} faces labeled · {len(flagged)} flagged for review · {rendered} thumbnails · hover a face for details</div>
+<div class="stats">{len(assignments)} faces labeled · {len(ambiguous)} ambiguous · {len(flagged)} flagged · {rendered} thumbnails · hover a face for details</div>
 {"".join(sections)}
 </body></html>"""
     output.write_text(html, encoding="utf-8")

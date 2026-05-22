@@ -391,6 +391,10 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
               help="Min fused score to assign an identity (else Unknown).")
 @click.option("--coherence-lambda", default=0.0, type=float, show_default=True,
               help="0 = coherence flags advisory only; >0 soft-down-weights incoherent pairs.")
+@click.option("--ambiguous-margin", default=0.10, type=float, show_default=True,
+              help="Flag as ambiguous when top-2 score is within this many pp of top-1 (0=off).")
+@click.option("--min-face-px",   default=48, type=int, show_default=True,
+              help="Skip faces whose width or height is below this many pixels (0=all).")
 @click.option("--top-k",         default=15, type=int, show_default=True,
               help="Candidate identities scored per face.")
 @click.option("--folds",         default=5, type=int, show_default=True,
@@ -402,7 +406,7 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
 @click.option("--export-html",   default=None, type=Path, help="Write a review gallery to PATH.")
 @click.option("--writeback",     default=None, type=Path, help="Write predictions to PATH (.json/.csv).")
 def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_lambda,
-          top_k, folds, eval, audit_tagged, export_html, writeback):
+          ambiguous_margin, min_face_px, top_k, folds, eval, audit_tagged, export_html, writeback):
     """Late-fusion identity labeling over cached embeddings + EXIF."""
     import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
     import torch
@@ -435,11 +439,15 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
             scene_backbones.add(bid)
         console.print(f"  loaded {len(blob['embeddings']):,} from {path.name}  ({bid})")
 
-    # Partition faces by tag status.
+    # Partition faces by tag status, optionally filtering below min_face_px.
     def _is_unknown(n): return (not n) or n.strip().lower() in _UNKNOWN_TAGS
     known, unknown, untagged = [], [], []
+    n_filtered_size = 0
     for p in photos:
         for i, f in enumerate(p.faces):
+            if min_face_px > 0 and (f.width < min_face_px or f.height < min_face_px):
+                n_filtered_size += 1
+                continue
             if f.person_name is None:
                 untagged.append((p.id, i, None))
             elif _is_unknown(f.person_name):
@@ -447,7 +455,8 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
             else:
                 known.append((p.id, i, f.person_name))
     train_faces = known + unknown
-    console.print(f"  faces — known: {len(known):,}  unknown: {len(unknown):,}  untagged: {len(untagged):,}")
+    size_note = f"  filtered {n_filtered_size:,} faces < {min_face_px}px\n" if min_face_px > 0 else ""
+    console.print(f"{size_note}  faces — known: {len(known):,}  unknown: {len(unknown):,}  untagged: {len(untagged):,}")
 
     # Out-of-fold evaluation / leaderboard.
     if eval:
@@ -464,14 +473,36 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
 
     targets = untagged + unknown + (known if audit_tagged else [])
     console.print(f"[bold]Labeling {len(targets):,} faces[/bold] "
-                  f"(reject<{reject_threshold}, coherence_lambda={coherence_lambda}) …")
+                  f"(reject<{reject_threshold}, ambiguous_margin={ambiguous_margin}) …")
     assignments = reconcile(model, targets, embeddings_by_backbone, photo_map, gps_map,
                             reject_threshold=reject_threshold,
-                            coherence_lambda=coherence_lambda, top_k=top_k)
-    n_named = sum(1 for a in assignments if a.identity)
+                            coherence_lambda=coherence_lambda,
+                            ambiguous_margin=ambiguous_margin, top_k=top_k)
+    n_named = sum(1 for a in assignments if a.identity and not a.ambiguous)
+    n_ambig  = sum(1 for a in assignments if a.ambiguous)
+    n_unk    = sum(1 for a in assignments if not a.identity)
     n_flagged = sum(1 for a in assignments if a.flags)
-    console.print(f"  → {n_named:,} assigned an identity, "
-                  f"{len(assignments) - n_named:,} left Unknown, {n_flagged:,} flagged")
+    console.print(f"  → {n_named:,} assigned, {n_ambig:,} ambiguous, "
+                  f"{n_unk:,} Unknown, {n_flagged:,} flagged")
+
+    # Cluster the Unknown faces by DINOv2 similarity to surface unnamed repeating people.
+    unknown_clusters = []
+    if export_html:
+        dinov2_key = next((b for b in embeddings_by_backbone if b.startswith("dinov2")), None)
+        unk_face_keys = [(a.photo_id, a.face_idx) for a in assignments if not a.identity]
+        if dinov2_key and unk_face_keys:
+            from .cluster.identity import run_clustering_pipeline
+            unk_embs = {k: embeddings_by_backbone[dinov2_key][k]
+                        for k in unk_face_keys if k in embeddings_by_backbone[dinov2_key]}
+            if unk_embs:
+                console.print(f"[bold]Clustering {len(unk_embs):,} Unknown faces …[/bold]")
+                unknown_clusters = run_clustering_pipeline(
+                    photos, unk_embs, known_identities=[],
+                    min_cluster_size=3, temporal_sigma=30.0,
+                )
+                n_unk_clusters = len({r.cluster_id for r in unknown_clusters if r.cluster_id >= 0})
+                n_unk_noise    = sum(1 for r in unknown_clusters if r.cluster_id == -1)
+                console.print(f"  → {n_unk_clusters:,} Unknown clusters, {n_unk_noise:,} noise")
 
     if writeback:
         n = write_predictions(assignments, photo_map, writeback)
@@ -480,7 +511,8 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
     if export_html:
         from .export.html import export_review_html
         th_db = thumbnails_db if thumbnails_db.exists() else None
-        n = export_review_html(assignments, photo_map, export_html, thumbnails_db=th_db)
+        n = export_review_html(assignments, photo_map, export_html,
+                               thumbnails_db=th_db, unknown_clusters=unknown_clusters)
         console.print(f"  → [green]{n:,}[/green] crops — open "
                       f"[link={export_html.resolve().as_uri()}]{export_html}[/link]")
 
