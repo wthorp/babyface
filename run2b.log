@@ -1,0 +1,53 @@
+Loading database …
+  → 90,699 photos (51,516 face regions)
+Loading backbone siglip (device=cpu) …
+[transformers] Model config: bos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49406. This may result in unexpected behavior.
+[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49407. This may result in unexpected behavior.
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Loading weights:   0%|          | 0/408 [00:00<?, ?it/s]Loading weights: 100%|██████████| 408/408 [00:00<00:00, 14878.59it/s]
+Embedding with siglip:google/siglip2-base-patch16-224 (input=whole_image, 
+dim=768) …
+  [checkpoint] resumed 35315 embeddings from embeddings/emb_siglip_google__siglip2-base-patch16-224.ckpt.pt
+  [siglip:google/siglip2-base-patch16-224: 20000/90699 photos, 35315 embedded]
+  [siglip:google/siglip2-base-patch16-224: 40000/90699 photos, 35315 embedded]
+  [siglip:google/siglip2-base-patch16-224: 60000/90699 photos, 52135 embedded]
+  [siglip:google/siglip2-base-patch16-224: 80000/90699 photos, 68840 embedded]
+  [siglip:google/siglip2-base-patch16-224: 90699/90699 photos, 78726 embedded]
+  → 78,726 embeddings saved to 
+embeddings/emb_siglip_google__siglip2-base-patch16-224.pt
+=== embed done ===
+Loading database …
+  → 90,699 photos, 9,613 geotagged
+  loaded 51,214 from emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt  
+(dinov2:vit_base_patch14_dinov2.lvd142m)
+  loaded 78,726 from emb_siglip_google__siglip2-base-patch16-224.pt  
+(siglip:google/siglip2-base-patch16-224)
+  faces — known: 35,029  unknown: 16,487  untagged: 0
+Cross-fitting + evaluating …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+                   Out-of-fold top-1 accuracy  (51,516 faces)                   
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Model                                    ┃   All ┃ Session-linked ┃ Isolated ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ sim_dinov2:vit_base_patch14_dinov2.lvd1… │ 34.7% │          35.0% │    28.8% │
+│ sim_siglip:google/siglip2-base-patch16-… │ 32.5% │          32.7% │    27.8% │
+│ FUSED (GBM)                              │ 73.4% │          75.1% │    37.6% │
+└──────────────────────────────────────────┴───────┴────────────────┴──────────┘
+Reject accuracy on Unknown faces — all 46.7%, isolated 86.4%
+Training final fusion model …
+Labeling 16,487 faces (reject<0.1, coherence_lambda=0.0) …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+  → 7,331 assigned an identity, 9,156 left Unknown, 4 flagged
+  → 16,487 predictions written to predictions.json
+  → 16,352 crops — open review.html
+=== pipeline complete ===

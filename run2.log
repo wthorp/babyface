@@ -1,0 +1,132 @@
+[run2.sh] Cache present for dinov2 — checking siglip …
+Loading database …
+  → 90,699 photos (51,516 face regions)
+Loading backbone dinov2 (device=cpu) …
+Warning: You are sending unauthenticated requests to the HF Hub. Please set a HF_TOKEN to enable higher rate limits and faster downloads.
+Embedding with dinov2:vit_base_patch14_dinov2.lvd142m (input=face_crop, dim=768)
+…
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 5000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 10000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 15000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 20000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 25000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 30000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 35000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 40000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 45000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 50000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 55000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 60000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 65000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 70000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 75000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 80000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 85000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 90000/90699 photos, 0 embedded]
+  [dinov2:vit_base_patch14_dinov2.lvd142m: 90699/90699 photos, 0 embedded]
+  → 0 embeddings saved to 
+embeddings/emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt
+Loading backbone siglip (device=cpu) …
+[transformers] Model config: bos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49406. This may result in unexpected behavior.
+[transformers] Model config: eos_token_id must be `None` or an integer within the vocabulary (between 0 and 31999), got 49407. This may result in unexpected behavior.
+Loading weights:   0%|          | 0/408 [00:00<?, ?it/s]Loading weights: 100%|██████████| 408/408 [00:00<00:00, 13372.79it/s]
+Embedding with siglip:google/siglip2-base-patch16-224 (input=whole_image, 
+dim=768) …
+  [siglip:google/siglip2-base-patch16-224: 5000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 10000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 15000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 20000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 25000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 30000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 35000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 40000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 45000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 50000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 55000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 60000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 65000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 70000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 75000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 80000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 85000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 90000/90699 photos, 0 embedded]
+  [siglip:google/siglip2-base-patch16-224: 90699/90699 photos, 0 embedded]
+  → 0 embeddings saved to 
+embeddings/emb_siglip_google__siglip2-base-patch16-224.pt
+[run2.sh] Embed done — running label …
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/workspace/agent/babyface-new/src/babyface/cli.py", line 512, in <module>
+    main()
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1514, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1435, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1902, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1298, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 853, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/src/babyface/cli.py", line 403, in label
+    import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
+    ^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/lightgbm/__init__.py", line 11, in <module>
+    from .basic import Booster, Dataset, Sequence, register_logger
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/lightgbm/basic.py", line 9, in <module>
+    from .libpath import _LIB  # isort: skip
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/lightgbm/libpath.py", line 49, in <module>
+    _LIB = ctypes.cdll.LoadLibrary(_find_lib_path()[0])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/node/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/ctypes/__init__.py", line 454, in LoadLibrary
+    return self._dlltype(name)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/node/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/ctypes/__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: libgomp.so.1: cannot open shared object file: No such file or directory
+Traceback (most recent call last):
+  File "<frozen runpy>", line 198, in _run_module_as_main
+  File "<frozen runpy>", line 88, in _run_code
+  File "/workspace/agent/babyface-new/src/babyface/cli.py", line 512, in <module>
+    main()
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1514, in __call__
+    return self.main(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1435, in main
+    rv = self.invoke(ctx)
+         ^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1902, in invoke
+    return _process_result(sub_ctx.command.invoke(sub_ctx))
+                           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 1298, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/click/core.py", line 853, in invoke
+    return callback(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/src/babyface/cli.py", line 403, in label
+    import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
+    ^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/lightgbm/__init__.py", line 11, in <module>
+    from .basic import Booster, Dataset, Sequence, register_logger
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/lightgbm/basic.py", line 9, in <module>
+    from .libpath import _LIB  # isort: skip
+    ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/lightgbm/libpath.py", line 49, in <module>
+    _LIB = ctypes.cdll.LoadLibrary(_find_lib_path()[0])
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/node/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/ctypes/__init__.py", line 454, in LoadLibrary
+    return self._dlltype(name)
+           ^^^^^^^^^^^^^^^^^^^
+  File "/home/node/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/lib/python3.11/ctypes/__init__.py", line 376, in __init__
+    self._handle = _dlopen(self._name, mode)
+                   ^^^^^^^^^^^^^^^^^^^^^^^^^
+OSError: libgomp.so.1: cannot open shared object file: No such file or directory

@@ -1,0 +1,163 @@
+/* babyface labeling UI */
+*, *::before, *::after { box-sizing: border-box; }
+
+:root {
+  --bg: #0f1117;
+  --surface: #1a1d26;
+  --surface2: #252836;
+  --border: #2e3249;
+  --text: #e8eaf0;
+  --muted: #7c8298;
+  --accent: #5b8dee;
+  --danger: #e74c3c;
+  --success: #2ecc71;
+}
+
+html { font-size: 15px; }
+body {
+  margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg); color: var(--text); line-height: 1.5;
+}
+
+/* ── Header / Nav ──────────────────────────────────── */
+header { background: var(--surface); border-bottom: 1px solid var(--border); }
+nav {
+  display: flex; align-items: center; gap: 1.2rem;
+  padding: 0.6rem 1.2rem; flex-wrap: wrap;
+}
+.brand { font-size: 1.1rem; font-weight: 700; color: var(--text); text-decoration: none; }
+nav a { color: var(--muted); text-decoration: none; font-size: 0.9rem; }
+nav a:hover, nav a.active { color: var(--text); }
+.spacer { flex: 1; }
+.badge {
+  display: inline-block; background: var(--surface2);
+  border: 1px solid var(--border); border-radius: 99px;
+  padding: 0 0.4em; font-size: 0.75rem; color: var(--muted);
+}
+.stats-bar { display: flex; gap: 1rem; font-size: 0.85rem; color: var(--muted); }
+.stats-bar span { white-space: nowrap; }
+.retrain-btn {
+  padding: 0.35rem 0.9rem; background: var(--accent); color: #fff;
+  border: none; border-radius: 5px; cursor: pointer; font-size: 0.85rem;
+}
+.retrain-btn:hover { opacity: 0.85; }
+#retrain-panel { padding: 0 1.2rem; }
+.retrain-status {
+  background: var(--surface2); border: 1px solid var(--border);
+  border-radius: 6px; padding: 0.8rem; margin: 0.4rem 0;
+  max-height: 200px; overflow-y: auto;
+}
+.retrain-status pre { margin: 0; font-size: 0.8rem; white-space: pre-wrap; color: var(--muted); }
+.retrain-done { border-color: var(--success); }
+.retrain-error { border-color: var(--danger); }
+.toast {
+  background: var(--success); color: #fff; padding: 0.4rem 0.8rem;
+  border-radius: 5px; font-size: 0.85rem;
+}
+
+/* ── Main ──────────────────────────────────────────── */
+main { padding: 1.5rem 1.5rem; max-width: 1400px; margin: 0 auto; }
+h1 { margin: 0 0 1rem; font-size: 1.5rem; }
+h1 small { font-weight: 400; color: var(--muted); font-size: 1rem; margin-left: 0.5rem; }
+.page-header { display: flex; align-items: baseline; gap: 1rem; flex-wrap: wrap; margin-bottom: 1rem; }
+.page-header h1 { margin-bottom: 0; }
+.count { color: var(--muted); font-size: 0.9rem; }
+.hint { color: var(--muted); font-size: 0.9rem; margin-bottom: 1.2rem; }
+.pagination { font-size: 0.85rem; color: var(--muted); margin-left: auto; }
+.pagination a { color: var(--accent); }
+.pagination-bottom { margin-top: 1.5rem; display: flex; gap: 0.8rem; }
+.btn {
+  display: inline-block; padding: 0.4rem 1rem; border-radius: 5px;
+  background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border); text-decoration: none; font-size: 0.85rem;
+}
+.btn:hover { background: var(--border); }
+
+/* ── Identity card list ────────────────────────────── */
+.identity-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 0.8rem;
+}
+.identity-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 1rem 0.8rem; text-decoration: none; color: var(--text);
+  display: flex; align-items: center; gap: 0.7rem; transition: background 0.15s;
+}
+.identity-card:hover { background: var(--surface2); }
+.identity-avatar {
+  width: 42px; height: 42px; border-radius: 50%; display: flex;
+  align-items: center; justify-content: center; font-size: 1.2rem; font-weight: 700;
+  flex-shrink: 0;
+}
+.identity-name { font-weight: 600; font-size: 0.95rem; }
+.identity-count { color: var(--muted); font-size: 0.8rem; }
+
+/* ── Face grid ─────────────────────────────────────── */
+.face-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 0.8rem;
+}
+.face-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden;
+  display: flex; flex-direction: column;
+}
+.face-card.corrected { border-color: var(--success); }
+.face-card.ambig { border-color: #f39c12; }
+.face-card img {
+  width: 100%; aspect-ratio: 1; object-fit: cover; display: block;
+  background: var(--surface2);
+}
+.face-meta { padding: 0.4rem 0.5rem 0.2rem; }
+.face-name { font-size: 0.8rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.face-score { font-size: 0.75rem; color: var(--muted); }
+.face-date  { font-size: 0.7rem; color: var(--muted); }
+.face-album { font-size: 0.68rem; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.face-card form { padding: 0.3rem 0.5rem 0.5rem; }
+.face-card select {
+  width: 100%; background: var(--surface2); color: var(--text);
+  border: 1px solid var(--border); border-radius: 4px;
+  padding: 0.2rem 0.3rem; font-size: 0.75rem;
+}
+.ambig-tag {
+  display: inline-block; background: #f39c1233; color: #f39c12;
+  border-radius: 3px; padding: 0 0.3em; font-size: 0.68rem;
+}
+
+/* ── Cluster grid ──────────────────────────────────── */
+.cluster-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 1rem;
+}
+.cluster-card {
+  background: var(--surface); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.8rem; display: flex; gap: 0.8rem; align-items: flex-start;
+}
+.cluster-preview {
+  position: relative; flex-shrink: 0; display: block;
+}
+.cluster-preview img {
+  width: 80px; height: 80px; object-fit: cover; border-radius: 6px;
+  background: var(--surface2);
+}
+.cluster-count {
+  position: absolute; bottom: 0; left: 0; right: 0; text-align: center;
+  background: #0008; color: #fff; font-size: 0.7rem; padding: 1px 0;
+  border-radius: 0 0 6px 6px;
+}
+.cluster-info { flex: 1; min-width: 0; }
+.cluster-label { font-weight: 600; font-size: 0.9rem; margin-bottom: 0.2rem; }
+.cluster-date { font-size: 0.75rem; color: var(--muted); margin-bottom: 0.5rem; }
+.cluster-info form { display: flex; flex-direction: column; gap: 0.4rem; }
+.cluster-info input[type=text] {
+  background: var(--surface2); color: var(--text); border: 1px solid var(--border);
+  border-radius: 4px; padding: 0.3rem 0.5rem; font-size: 0.82rem; width: 100%;
+}
+.cluster-info button {
+  background: var(--accent); color: #fff; border: none; border-radius: 4px;
+  padding: 0.3rem 0.6rem; cursor: pointer; font-size: 0.82rem; align-self: flex-start;
+}
+.cluster-info button:hover { opacity: 0.85; }

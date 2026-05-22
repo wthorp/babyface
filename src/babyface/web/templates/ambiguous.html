@@ -1,0 +1,55 @@
+{% extends "base.html" %}
+{% block title %}Ambiguous{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Ambiguous faces <small>near-tie predictions</small></h1>
+  <span class="count">{{ total }} faces</span>
+  {% if n_pages > 1 %}
+  <span class="pagination">
+    {% if has_prev %}<a href="?page={{ page - 1 }}">← prev</a>{% endif %}
+    page {{ page + 1 }} / {{ n_pages }}
+    {% if has_next %}<a href="?page={{ page + 1 }}">next →</a>{% endif %}
+  </span>
+  {% endif %}
+</div>
+<p class="hint">These faces had two identities within 10 percentage points of each other.
+   The model picked one — review and confirm or reassign.</p>
+
+<div class="face-grid">
+  {% for face in faces %}
+  {% set ident = face.predicted_identity or 'Unknown' %}
+  {% set fcolor = store.identity_color(ident) %}
+  <div class="face-card ambig {{ 'corrected' if face.corrected else '' }}"
+       id="face-{{ face.photo_id }}-{{ face.face_idx }}">
+    <img src="/face/{{ face.photo_id }}/{{ face.face_idx }}" loading="lazy"
+         width="120" height="120" alt="{{ ident }}">
+    <div class="face-meta">
+      <div class="face-name" style="color:{{ fcolor }}">{{ ident }}</div>
+      <div class="face-score">{{ "%.0f%%" | format(face.score * 100) }} <span class="ambig-tag">ambiguous</span></div>
+      <div class="face-date">{{ face.date_approx }}</div>
+      <div class="face-album">{{ face.album_path.lstrip('/') }}</div>
+    </div>
+    <form hx-post="/correct"
+          hx-target="#face-{{ face.photo_id }}-{{ face.face_idx }}"
+          hx-swap="outerHTML">
+      <input type="hidden" name="photo_id" value="{{ face.photo_id }}">
+      <input type="hidden" name="face_idx" value="{{ face.face_idx }}">
+      <input type="hidden" name="return_to" value="/ambiguous">
+      <select name="identity" onchange="this.form.requestSubmit()">
+        <option value="Unknown">Unknown</option>
+        {% for n, _, nc in all_identities %}
+        <option value="{{ n }}" {{ 'selected' if n == ident else '' }}>{{ n }}</option>
+        {% endfor %}
+      </select>
+    </form>
+  </div>
+  {% endfor %}
+</div>
+
+{% if n_pages > 1 %}
+<div class="pagination-bottom">
+  {% if has_prev %}<a class="btn" href="?page={{ page - 1 }}">← prev</a>{% endif %}
+  {% if has_next %}<a class="btn" href="?page={{ page + 1 }}">next →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

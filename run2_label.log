@@ -1,0 +1,32 @@
+Loading database …
+  → 90,699 photos, 9,613 geotagged
+  loaded 0 from emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt  
+(dinov2:vit_base_patch14_dinov2.lvd142m)
+  loaded 0 from emb_siglip_google__siglip2-base-patch16-224.pt  
+(siglip:google/siglip2-base-patch16-224)
+  faces — known: 35,029  unknown: 16,487  untagged: 0
+Cross-fitting + evaluating …
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+                   Out-of-fold top-1 accuracy  (35,015 faces)                   
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Model                                   ┃    All ┃ Session-linked ┃ Isolated ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ sim_dinov2:vit_base_patch14_dinov2.lvd… │ 100.0% │         100.0% │   100.0% │
+│ sim_siglip:google/siglip2-base-patch16… │ 100.0% │         100.0% │   100.0% │
+│ FUSED (GBM)                             │ 100.0% │         100.0% │   100.0% │
+└─────────────────────────────────────────┴────────┴────────────────┴──────────┘
+Reject accuracy on Unknown faces — all —, isolated —
+Training final fusion model …
+Labeling 16,487 faces (reject<0.1, coherence_lambda=0.0) …
+  → 0 assigned an identity, 0 left Unknown, 0 flagged
+  → 0 predictions written to predictions.json
+  → 0 crops — open review.html

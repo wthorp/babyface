@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Unknown clusters{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>Unknown clusters</h1>
+  <span class="count">{{ total }} clusters</span>
+  {% if n_pages > 1 %}
+  <span class="pagination">
+    {% if has_prev %}<a href="?page={{ page - 1 }}">← prev</a>{% endif %}
+    page {{ page + 1 }} / {{ n_pages }}
+    {% if has_next %}<a href="?page={{ page + 1 }}">next →</a>{% endif %}
+  </span>
+  {% endif %}
+</div>
+<p class="hint">Each cluster is a group of unidentified faces that look similar.
+   Name a cluster to add all its faces to the training set as a new identity.</p>
+
+<div class="cluster-grid">
+  {% for cl in cluster_list %}
+  {% set rep = cl.representative %}
+  <div class="cluster-card" id="cluster-{{ cl.cluster_id }}">
+    <a href="/cluster/{{ cl.cluster_id }}" class="cluster-preview">
+      <img src="/face/{{ rep.photo_id }}/{{ rep.face_idx }}" loading="lazy"
+           width="100" height="100" alt="cluster {{ cl.cluster_id }}">
+      <span class="cluster-count">{{ cl.count }} faces</span>
+    </a>
+    <div class="cluster-info">
+      {% if cl.cluster_id == -1 %}
+        <div class="cluster-label">Unclustered noise</div>
+      {% else %}
+        <div class="cluster-label">Cluster {{ cl.cluster_id }}</div>
+        <div class="cluster-date">{{ rep.date_approx }}</div>
+      {% endif %}
+      <form hx-post="/cluster/assign"
+            hx-target="#cluster-{{ cl.cluster_id }}"
+            hx-swap="outerHTML">
+        <input type="hidden" name="cluster_id" value="{{ cl.cluster_id }}">
+        <input type="text" name="identity" placeholder="Name this person…"
+               list="identity-list" autocomplete="off">
+        <button type="submit">Assign</button>
+      </form>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+<datalist id="identity-list">
+  {% for n, _, _ in all_identities %}
+  <option value="{{ n }}">
+  {% endfor %}
+</datalist>
+
+{% if n_pages > 1 %}
+<div class="pagination-bottom">
+  {% if has_prev %}<a class="btn" href="?page={{ page - 1 }}">← prev</a>{% endif %}
+  {% if has_next %}<a class="btn" href="?page={{ page + 1 }}">next →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

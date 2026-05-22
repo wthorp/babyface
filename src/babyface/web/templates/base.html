@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}babyface{% endblock %} – babyface</title>
+  <link rel="stylesheet" href="/static/style.css">
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+</head>
+<body>
+  <header>
+    <nav>
+      <a class="brand" href="/">👶 babyface</a>
+      <a href="/" {% if request.url.path == '/' %}class="active"{% endif %}>Identities</a>
+      <a href="/ambiguous" {% if request.url.path == '/ambiguous' %}class="active"{% endif %}>
+        Ambiguous <span class="badge">{{ stats.ambiguous }}</span>
+      </a>
+      <a href="/clusters" {% if request.url.path == '/clusters' %}class="active"{% endif %}>
+        Unknown clusters <span class="badge">{{ stats.n_clusters }}</span>
+      </a>
+      <div class="spacer"></div>
+      <div class="stats-bar">
+        <span title="Assigned">✓ {{ stats.assigned }}</span>
+        <span title="Ambiguous">≈ {{ stats.ambiguous }}</span>
+        <span title="Unknown">? {{ stats.unknown }}</span>
+        <span title="Manually corrected">✎ {{ stats.corrected }}</span>
+      </div>
+      <button class="retrain-btn"
+              hx-post="/retrain" hx-target="#retrain-panel" hx-swap="innerHTML">
+        ↺ Retrain
+      </button>
+    </nav>
+    <div id="retrain-panel"></div>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

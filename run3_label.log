@@ -1,0 +1,34 @@
+Loading database …
+  → 90,699 photos, 9,613 geotagged
+  loaded 51,214 from emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt  
+(dinov2:vit_base_patch14_dinov2.lvd142m)
+  loaded 0 from emb_siglip_google__siglip2-base-patch16-224.pt  
+(siglip:google/siglip2-base-patch16-224)
+  faces — known: 35,029  unknown: 16,487  untagged: 0
+Cross-fitting + evaluating …
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+                   Out-of-fold top-1 accuracy  (51,365 faces)                   
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Model                                    ┃   All ┃ Session-linked ┃ Isolated ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ sim_dinov2:vit_base_patch14_dinov2.lvd1… │ 34.6% │          34.9% │    28.6% │
+│ sim_siglip:google/siglip2-base-patch16-… │ 34.6% │          34.9% │    28.6% │
+│ FUSED (GBM)                              │ 79.7% │          81.4% │    45.1% │
+└──────────────────────────────────────────┴───────┴────────────────┴──────────┘
+Reject accuracy on Unknown faces — all 46.5%, isolated 85.9%
+Training final fusion model …
+Labeling 16,487 faces (reject<0.1, coherence_lambda=0.0) …
+/workspace/agent/babyface-new/.venv/lib/python3.11/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+  → 7,150 assigned an identity, 9,186 left Unknown, 20 flagged
+  → 16,336 predictions written to predictions.json
+  → 0 crops — open review.html

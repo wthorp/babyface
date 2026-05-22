@@ -588,5 +588,22 @@ def _print_leaderboard(report) -> None:
         console.print(f"[dim]SHAP importance: {top}[/dim]")
 
 
+@main.command()
+@click.option("--predictions", default="predictions6.json", show_default=True,
+              help="Predictions JSON file to serve (relative to repo dir).")
+@click.option("--photo-root", type=Path, default=None,
+              help="Photo root for serving real face crops (optional).")
+@click.option("--host", default="0.0.0.0", show_default=True)
+@click.option("--port", default=8080, show_default=True)
+@click.option("--reload", is_flag=True, default=False, help="Dev auto-reload.")
+def web(predictions: str, photo_root, host: str, port: int, reload: bool):
+    """Launch the interactive labeling web UI."""
+    import uvicorn
+    from .web.app import create_app
+    repo_dir = Path(__file__).parent.parent.parent  # .../babyface-new
+    app = create_app(repo_dir, predictions_file=predictions, photo_root=photo_root)
+    uvicorn.run(app, host=host, port=port, reload=reload)
+
+
 if __name__ == "__main__":
     main()

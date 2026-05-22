@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}Identities{% endblock %}
+{% block content %}
+<h1>Identities <small>{{ stats.n_identities }} people, {{ stats.total }} faces</small></h1>
+
+<div class="identity-grid">
+  {% for name, count, color in identity_names %}
+  <a class="identity-card" href="/identity/{{ name | urlencode }}" style="border-top:3px solid {{ color }}">
+    <div class="identity-avatar" style="background:{{ color }}20; color:{{ color }}">
+      {{ name[0].upper() }}
+    </div>
+    <div class="identity-info">
+      <div class="identity-name">{{ name }}</div>
+      <div class="identity-count">{{ count }} faces</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}

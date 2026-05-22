@@ -1,0 +1,86 @@
+=== RUN 5: Commits 1+2 (pseudo-labels + sub-centroids) ===
+Loading database …
+  → 90,699 photos, 9,613 geotagged
+  loaded 51,214 from emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt  
+(dinov2:vit_base_patch14_dinov2.lvd142m)
+  loaded 78,726 from emb_siglip_google__siglip2-base-patch16-224.pt  
+(siglip:google/siglip2-base-patch16-224)
+  pseudo-labels: 5,436 added from predictions3.json
+  filtered 685 faces < 48px
+  faces — known: 34,923  unknown: 15,908  untagged: 0
+Cross-fitting + evaluating …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+                   Out-of-fold top-1 accuracy  (50,831 faces)                   
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Model                                    ┃   All ┃ Session-linked ┃ Isolated ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ sim_siglip:google/siglip2-base-patch16-… │ 72.4% │          73.4% │    45.8% │
+│ sim_dinov2:vit_base_patch14_dinov2.lvd1… │ 46.3% │          46.6% │    39.1% │
+│ FUSED (GBM)                              │ 82.8% │          83.9% │    53.1% │
+└──────────────────────────────────────────┴───────┴────────────────┴──────────┘
+Reject accuracy on Unknown faces — all 54.6%, isolated 84.3%
+Training final fusion model …
+Labeling 15,908 faces (reject<0.5, ambiguous_margin=0.1) …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+  → 5,574 assigned, 2,547 ambiguous, 7,787 Unknown, 13 flagged
+Clustering 7,683 Unknown faces …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/cluster/_hdbscan/hdbscan.py:722: FutureWarning: The default value of `copy` will change from False to True in 1.10. Explicitly set a value for `copy` to silence this warning.
+  warn(
+  → 801 Unknown clusters, 2,764 noise
+  → 15,908 predictions written to predictions5.json
+  → 0 crops — open review5.html
+=== run5 complete ===
+=== RUN 6: Commits 1+2+3 (+ quality weighting) ===
+Loading database …
+  → 90,699 photos, 9,613 geotagged
+  loaded 51,214 from emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt  
+(dinov2:vit_base_patch14_dinov2.lvd142m)
+  loaded 78,726 from emb_siglip_google__siglip2-base-patch16-224.pt  
+(siglip:google/siglip2-base-patch16-224)
+  pseudo-labels: 5,564 added from predictions5.json
+  filtered 685 faces < 48px
+  faces — known: 34,923  unknown: 15,908  untagged: 0
+Computing face quality scores (Laplacian variance) …
+  quality cache: 0 scores written to quality_cache.json
+Cross-fitting + evaluating …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+                   Out-of-fold top-1 accuracy  (50,831 faces)                   
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━┓
+┃ Model                                    ┃   All ┃ Session-linked ┃ Isolated ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━┩
+│ sim_siglip:google/siglip2-base-patch16-… │ 73.4% │          74.4% │    45.1% │
+│ sim_dinov2:vit_base_patch14_dinov2.lvd1… │ 48.1% │          48.4% │    38.6% │
+│ FUSED (GBM)                              │ 82.8% │          83.9% │    53.6% │
+└──────────────────────────────────────────┴───────┴────────────────┴──────────┘
+Reject accuracy on Unknown faces — all 32.1%, isolated 82.0%
+Training final fusion model …
+Labeling 15,908 faces (reject<0.5, ambiguous_margin=0.1) …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+  → 6,318 assigned, 3,205 ambiguous, 6,385 Unknown, 11 flagged
+Clustering 6,321 Unknown faces …
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/cluster/_hdbscan/hdbscan.py:722: FutureWarning: The default value of `copy` will change from False to True in 1.10. Explicitly set a value for `copy` to silence this warning.
+  warn(
+  → 682 Unknown clusters, 2,319 noise
+  → 15,908 predictions written to predictions6.json
+  → 0 crops — open review6.html
+=== run6 complete ===

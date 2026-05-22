@@ -1,0 +1,82 @@
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+/workspace/agent/babyface-new/.venv/lib/python3.14/site-packages/sklearn/utils/validation.py:2691: UserWarning: X does not have valid feature names, but LGBMClassifier was fitted with feature names
+  warnings.warn(
+Loading database ...
+Loading embeddings ...
+  loaded 51,214 from emb_dinov2_vit_base_patch14_dinov2.lvd142m.pt  (dinov2:vit_base_patch14_dinov2.lvd142m)
+  loaded 78,726 from emb_siglip_google__siglip2-base-patch16-224.pt  (siglip:google/siglip2-base-patch16-224)
+Building tagged faces list ...
+  34,923 tagged faces for crossfit
+Cross-fitting (10-15 min) ...
+Running OOF LightGBM ...
+Analysing failures ...
+
+============================================================
+Q1 -- Accuracy (excl. ambiguous predictions)
+============================================================
+  All faces:       80.7%  (28183/34923)
+  Excl. ambiguous: 89.5%  (20067/22427)
+  Ambiguous faces: 12496 (35.8% of known faces in OOF)
+
+============================================================
+Q2a -- Error rate by face size bucket
+============================================================
+  tiny(<64)               n=   64  acc=71.9%  err=28.1%
+  small(64-96)            n=  287  acc=73.2%  err=26.8%
+  medium(96-140)          n=  845  acc=73.6%  err=26.4%
+  large(>=140)            n=33,727  acc=81.0%  err=19.0%
+
+============================================================
+Q2b -- Top-20 identities by error count
+============================================================
+  Identity                          n   errors     acc
+  ----------------------------   ----   ------     ---
+  Felix                         6,624    2,775   58.1%
+  Bill                          4,687    1,267   73.0%
+  Lisa                          4,247    1,017   76.1%
+  Quin                         18,414      939   94.9%
+  Nica                            253      152   39.9%
+  Kyle                             69       61   11.6%
+  Anna                             49       48    2.0%
+  Sebastian                        54       47   13.0%
+  Julie                            37       36    2.7%
+  Diane                            35       33    5.7%
+  Hank                             37       29   21.6%
+  Maya                             49       28   42.9%
+  Novi                             20       20    0.0%
+  Jenny                            20       18   10.0%
+  Grandpa Bill                     17       16    5.9%
+  Eleanor                          17       16    5.9%
+  Lillian                          18       15   16.7%
+  Gianna                           12       12    0.0%
+  Angie                            11       11    0.0%
+  Jonah                            15       11   26.7%
+
+============================================================
+Q2c -- Error type (all errors = 6,740)
+============================================================
+  wrong_identity          6,567  (97.4% of errors)
+  rejected                173  (2.6% of errors)
+
+  Split by session-linkage:
+  session-linked       n=33,376  acc=82.2%  errors: wrong_identity=5826, rejected=111
+  isolated             n=1,547  acc=48.1%  errors: wrong_identity=741, rejected=62
+
+============================================================
+Q2d -- Error rate by size x linkage
+============================================================
+  size bucket              linked acc  isolated acc
+  tiny(<64)                    83.0%        18.2%
+  small(64-96)                 79.4%        33.3%
+  medium(96-140)               78.9%        35.3%
+  large(>=140)                 82.3%        49.7%
+
+Done.
+=== analysis complete ===
