@@ -37,8 +37,8 @@ SITE_PACKAGES="$(uv run python -c 'import sysconfig; print(sysconfig.get_paths()
 echo "$REPO_ROOT/src" > "$SITE_PACKAGES/babyface.pth"
 
 # Keep the container alive: NanoClaw kills the container if /workspace/.heartbeat
-# isn't touched for 30 minutes. Long embeds leave Claude Code idle long enough
-# to trigger this. Touch every 5 min for the lifetime of this script.
+# isn't touched for 30 minutes. Long CPU-bound embeds leave Claude Code idle long
+# enough to trigger this. Do NOT remove this loop — embed runs take 1–4 hours.
 (while true; do touch /workspace/.heartbeat; sleep 300; done) &
 HEARTBEAT_PID=$!
 trap "kill $HEARTBEAT_PID 2>/dev/null" EXIT

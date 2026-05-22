@@ -271,7 +271,9 @@ def load_thumbnail(
     ).fetchone()
     if row is None:
         return None
-    # type 2 = JPEG, type 1 = PGF (not easily decodable without libpgf)
+    # In this library all thumbnails are PGF (type=2 here means PGF, not JPEG).
+    # PIL cannot decode PGF, so we return None for everything. Use --photo-root
+    # for actual pixel data.
     return bytes(row[0]) if row[1] == 2 else None
 
 
