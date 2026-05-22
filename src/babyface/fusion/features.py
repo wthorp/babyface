@@ -42,6 +42,7 @@ import numpy as np
 
 _EPOCH = datetime(2000, 1, 1)
 _UNKNOWN_TAGS = {"unknown", "unidentified", ""}   # treated as the reject class
+N_SUBCENTROIDS = 3   # k-means clusters per identity per face backbone
 
 
 def _days(dt: datetime | None) -> float | None:
@@ -81,7 +82,8 @@ class IdentityModel:
     gps: list[tuple[float, float]] = field(default_factory=list)
     albums: set[str] = field(default_factory=set)                   # train album_paths
     album_face_counts: dict[str, int] = field(default_factory=dict) # album_path → face count
-    scene_embs: dict[str, np.ndarray] = field(default_factory=dict) # backbone_id → [N, D] for scene models
+    scene_embs: dict[str, np.ndarray] = field(default_factory=dict)    # backbone_id → [N, D] for scene models
+    sub_centroids: dict[str, np.ndarray] = field(default_factory=dict) # backbone_id → [k, D] k-means clusters
     n_faces: int = 0
 
 
@@ -132,11 +134,17 @@ def build_identity_models(
 
     for b, by_name in embs.items():
         for name, vecs in by_name.items():
-            if name in models and vecs:
-                mat = np.stack(vecs)                              # [N, D] normalised
-                models[name].centroids[b] = _l2(np.mean(mat, axis=0))
-                if b in scene_backbones:
-                    models[name].scene_embs[b] = mat             # kept for max-sim feature
+            if name not in models or not vecs:
+                continue
+            mat = np.stack(vecs)                               # [N, D] normalised
+            models[name].centroids[b] = _l2(np.mean(mat, axis=0))
+            if b in scene_backbones:
+                models[name].scene_embs[b] = mat               # kept for max-sim feature
+            elif len(vecs) >= 2 * N_SUBCENTROIDS:
+                from sklearn.cluster import KMeans              # lazy — avoids top-level sklearn dep
+                km = KMeans(n_clusters=N_SUBCENTROIDS, n_init=5, random_state=42, verbose=0)
+                km.fit(mat)
+                models[name].sub_centroids[b] = np.stack([_l2(c) for c in km.cluster_centers_])
     return models
 
 
@@ -250,7 +258,11 @@ def build_feature_table(
                 if b not in face_vecs:
                     sim_feats.append(float("nan"))
                 elif b in scene_backbones and b in m.scene_embs and m.scene_embs[b].shape[0] > 0:
+                    # Scene backbone: max cosine to any individual training photo embedding.
                     sim_feats.append(float(np.max(m.scene_embs[b] @ face_vecs[b])))
+                elif b in m.sub_centroids:
+                    # Face backbone with sub-centroids: max cosine to any k-means cluster.
+                    sim_feats.append(float(np.max(m.sub_centroids[b] @ face_vecs[b])))
                 elif b in m.centroids:
                     sim_feats.append(float(m.centroids[b] @ face_vecs[b]))
                 else:
