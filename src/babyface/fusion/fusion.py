@@ -189,7 +189,8 @@ class EvalReport:
 def _lgbm_params() -> dict:
     return dict(objective="binary", n_estimators=300, learning_rate=0.05,
                 num_leaves=31, min_child_samples=40, subsample=0.8,
-                colsample_bytree=0.8, reg_lambda=1.0, verbose=-1, n_jobs=-1)
+                colsample_bytree=0.8, reg_lambda=1.0, is_unbalance=True,
+                verbose=-1, n_jobs=-1)
 
 
 def evaluate(d: CrossfitDesign, reject_threshold: float = 0.5) -> EvalReport:

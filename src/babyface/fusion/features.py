@@ -80,6 +80,8 @@ class IdentityModel:
     n_camera_obs: int = 0
     gps: list[tuple[float, float]] = field(default_factory=list)
     albums: set[str] = field(default_factory=set)                   # train album_paths
+    album_face_counts: dict[str, int] = field(default_factory=dict) # album_path → face count
+    scene_embs: dict[str, np.ndarray] = field(default_factory=dict) # backbone_id → [N, D] for scene models
     n_faces: int = 0
 
 
@@ -96,6 +98,8 @@ def build_identity_models(
     # backbone_id → {name → list[np.ndarray]}
     embs: dict[str, dict[str, list[np.ndarray]]] = {b: {} for b in embeddings_by_backbone}
 
+    seen_scene: set[tuple[str, int, str]] = set()   # deduplicate (name, photo_id, backbone)
+
     for pid, fidx, name in train_records:
         if not name or name.strip().lower() in _UNKNOWN_TAGS:
             continue
@@ -110,10 +114,18 @@ def build_identity_models(
                 m.camera_counts[photo.camera_model] = m.camera_counts.get(photo.camera_model, 0) + 1
                 m.n_camera_obs += 1
             m.albums.add(photo.album_path)
+            m.album_face_counts[photo.album_path] = m.album_face_counts.get(photo.album_path, 0) + 1
         if pid in gps_map:
             m.gps.append(gps_map[pid])
         for b, emap in embeddings_by_backbone.items():
             key = (pid, -1) if b in scene_backbones else (pid, fidx)
+            # For scene backbones deduplicate by photo so the same image isn't
+            # added multiple times when an identity has several faces in one photo.
+            if b in scene_backbones:
+                sk = (name, pid, b)
+                if sk in seen_scene:
+                    continue
+                seen_scene.add(sk)
             t = emap.get(key)
             if t is not None:
                 embs[b].setdefault(name, []).append(_l2(t.numpy().astype(np.float32)))
@@ -121,7 +133,10 @@ def build_identity_models(
     for b, by_name in embs.items():
         for name, vecs in by_name.items():
             if name in models and vecs:
-                models[name].centroids[b] = _l2(np.mean(np.stack(vecs), axis=0))
+                mat = np.stack(vecs)                              # [N, D] normalised
+                models[name].centroids[b] = _l2(np.mean(mat, axis=0))
+                if b in scene_backbones:
+                    models[name].scene_embs[b] = mat             # kept for max-sim feature
     return models
 
 
@@ -183,7 +198,8 @@ def build_feature_table(
 
     feat_names = (
         [f"sim_{b}" for b in backbones]
-        + ["time_prox", "in_active_range", "camera_p", "camera_seen", "geo_km", "id_log_prior"]
+        + ["time_prox", "in_active_range", "camera_p", "camera_seen", "geo_km", "id_log_prior",
+           "in_same_album", "n_same_album_faces"]
     )
 
     X_rows: list[list[float]] = []
@@ -226,11 +242,19 @@ def build_feature_table(
 
         for name in candidates:
             m = identity_models[name]
-            sim_feats = [
-                float(m.centroids[b] @ face_vecs[b]) if (b in face_vecs and b in m.centroids)
-                else float("nan")
-                for b in backbones
-            ]
+            # Sim features: face backbones use centroid dot-product; scene backbones
+            # use max cosine to any individual training photo (better than centroid
+            # average for background-context signals that vary across locations).
+            sim_feats: list[float] = []
+            for b in backbones:
+                if b not in face_vecs:
+                    sim_feats.append(float("nan"))
+                elif b in scene_backbones and b in m.scene_embs and m.scene_embs[b].shape[0] > 0:
+                    sim_feats.append(float(np.max(m.scene_embs[b] @ face_vecs[b])))
+                elif b in m.centroids:
+                    sim_feats.append(float(m.centroids[b] @ face_vecs[b]))
+                else:
+                    sim_feats.append(float("nan"))
             # Temporal
             if pdays is not None and m.days.size:
                 gap = float(np.min(np.abs(m.days - pdays)))
@@ -247,10 +271,17 @@ def build_feature_table(
             # Geo
             geo_km = (min(_haversine_km(pgps, g) for g in m.gps)
                       if (pgps and m.gps) else float("nan"))
+            # Album membership: how many of this identity's faces are in this album
+            if photo is not None:
+                in_same_album = 1.0 if photo.album_path in m.albums else 0.0
+                n_same_album = float(m.album_face_counts.get(photo.album_path, 0))
+            else:
+                in_same_album, n_same_album = 0.0, 0.0
 
             X_rows.append(sim_feats + [
                 time_prox, in_range, camera_p, camera_seen, geo_km,
                 math.log1p(m.n_faces),
+                in_same_album, n_same_album,
             ])
             if true_name is None:
                 y_rows.append(float("nan"))           # inference row
