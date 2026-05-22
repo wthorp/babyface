@@ -64,6 +64,7 @@ def crossfit_design(
     k: int = 5,
     seed: int = 42,
     top_k: int = 15,
+    quality_weights: dict | None = None,
 ) -> CrossfitDesign:
     rng = np.random.default_rng(seed)
     fold_of = rng.integers(0, k, size=len(tagged_faces))
@@ -79,7 +80,8 @@ def crossfit_design(
         if not test_recs:
             continue
         models = build_identity_models(train_recs, embeddings_by_backbone,
-                                       scene_backbones, photo_map, gps_map)
+                                       scene_backbones, photo_map, gps_map,
+                                       quality_weights=quality_weights)
         ft = build_feature_table(test_recs, models, embeddings_by_backbone,
                                  scene_backbones, photo_map, gps_map, top_k=top_k)
         if ft.X.size == 0:
@@ -258,13 +260,16 @@ def train_final(
     k: int = 5,
     seed: int = 42,
     top_k: int = 15,
+    quality_weights: dict | None = None,
 ) -> FusionModel:
     """Cross-fit rows (for an inference-matched training distribution), fit the
     GBM on all of them, and refit identity models on every tagged face."""
     import lightgbm as lgb
     d = crossfit_design(tagged_faces, embeddings_by_backbone, scene_backbones,
-                        photo_map, gps_map, k=k, seed=seed, top_k=top_k)
+                        photo_map, gps_map, k=k, seed=seed, top_k=top_k,
+                        quality_weights=quality_weights)
     clf = lgb.LGBMClassifier(**_lgbm_params()).fit(d.X, d.y)
     full_models = build_identity_models(tagged_faces, embeddings_by_backbone,
-                                        scene_backbones, photo_map, gps_map)
+                                        scene_backbones, photo_map, gps_map,
+                                        quality_weights=quality_weights)
     return FusionModel(clf, full_models, d.feature_names, scene_backbones)

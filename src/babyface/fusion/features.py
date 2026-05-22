@@ -93,12 +93,15 @@ def build_identity_models(
     scene_backbones: set[str],
     photo_map: dict[int, "object"],                     # photo_id → Photo
     gps_map: dict[int, tuple[float, float]] | None = None,
+    quality_weights: dict[tuple[int, int], float] | None = None,  # (photo_id, face_idx) → score
 ) -> dict[str, IdentityModel]:
     """Aggregate each known identity's centroids, date span, cameras and GPS."""
     gps_map = gps_map or {}
     models: dict[str, IdentityModel] = {}
     # backbone_id → {name → list[np.ndarray]}
     embs: dict[str, dict[str, list[np.ndarray]]] = {b: {} for b in embeddings_by_backbone}
+    # backbone_id → {name → list[float]} — parallel quality weights for non-scene backbones
+    qws: dict[str, dict[str, list[float]]] = {b: {} for b in embeddings_by_backbone}
 
     seen_scene: set[tuple[str, int, str]] = set()   # deduplicate (name, photo_id, backbone)
 
@@ -131,19 +134,30 @@ def build_identity_models(
             t = emap.get(key)
             if t is not None:
                 embs[b].setdefault(name, []).append(_l2(t.numpy().astype(np.float32)))
+                if quality_weights is not None and b not in scene_backbones:
+                    qws[b].setdefault(name, []).append(quality_weights.get((pid, fidx), 1.0))
 
     for b, by_name in embs.items():
         for name, vecs in by_name.items():
             if name not in models or not vecs:
                 continue
             mat = np.stack(vecs)                               # [N, D] normalised
-            models[name].centroids[b] = _l2(np.mean(mat, axis=0))
+            # Quality-weighted centroid for face backbones; unweighted for scene backbones.
+            q_list = qws.get(b, {}).get(name) if (quality_weights is not None and b not in scene_backbones) else None
+            if q_list and len(q_list) == len(vecs):
+                q_arr = np.array(q_list, dtype=np.float32)
+                q_arr /= q_arr.sum()
+                centroid = np.average(mat, axis=0, weights=q_arr)
+            else:
+                centroid = np.mean(mat, axis=0)
+                q_arr = None
+            models[name].centroids[b] = _l2(centroid)
             if b in scene_backbones:
                 models[name].scene_embs[b] = mat               # kept for max-sim feature
             elif len(vecs) >= 2 * N_SUBCENTROIDS:
                 from sklearn.cluster import KMeans              # lazy — avoids top-level sklearn dep
                 km = KMeans(n_clusters=N_SUBCENTROIDS, n_init=5, random_state=42, verbose=0)
-                km.fit(mat)
+                km.fit(mat, sample_weight=q_arr)
                 models[name].sub_centroids[b] = np.stack([_l2(c) for c in km.cluster_centers_])
     return models
 

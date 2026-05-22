@@ -407,11 +407,13 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
               help="Predictions JSON from a prior run. High-confidence assignments become training data.")
 @click.option("--pseudo-label-min-score", default=0.75, type=float, show_default=True,
               help="Min score threshold for accepting a pseudo-label (used when 'ambiguous' field absent).")
+@click.option("--quality-cache",  default=None, type=Path,
+              help="Path to quality-score JSON. Computed on first run (~5-10 min), cached for reuse.")
 @click.option("--export-html",   default=None, type=Path, help="Write a review gallery to PATH.")
 @click.option("--writeback",     default=None, type=Path, help="Write predictions to PATH (.json/.csv).")
 def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_lambda,
           ambiguous_margin, min_face_px, top_k, folds, eval, audit_tagged,
-          pseudo_labels, pseudo_label_min_score, export_html, writeback):
+          pseudo_labels, pseudo_label_min_score, quality_cache, export_html, writeback):
     """Late-fusion identity labeling over cached embeddings + EXIF."""
     import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
     import torch
@@ -484,18 +486,34 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
     size_note = f"  filtered {n_filtered_size:,} faces < {min_face_px}px\n" if min_face_px > 0 else ""
     console.print(f"{size_note}  faces — known: {len(known):,}  unknown: {len(unknown):,}  untagged: {len(untagged):,}")
 
+    # Quality-weighted centroids: compute or load Laplacian-variance scores.
+    quality_weights = None
+    if quality_cache:
+        from .fusion.quality import (compute_quality_scores, normalize_scores,
+                                     save_quality_cache, load_quality_cache)
+        if quality_cache.exists():
+            quality_weights = load_quality_cache(quality_cache)
+            console.print(f"  quality cache: loaded {len(quality_weights):,} scores from {quality_cache.name}")
+        else:
+            console.print("[bold]Computing face quality scores (Laplacian variance) …[/bold]")
+            raw_scores = compute_quality_scores(train_faces, photo_map)
+            quality_weights = normalize_scores(raw_scores)
+            save_quality_cache(quality_weights, quality_cache)
+
     # Out-of-fold evaluation / leaderboard.
     if eval:
         console.print("[bold]Cross-fitting + evaluating …[/bold]")
         design = crossfit_design(train_faces, embeddings_by_backbone, scene_backbones,
-                                 photo_map, gps_map, k=folds, top_k=top_k)
+                                 photo_map, gps_map, k=folds, top_k=top_k,
+                                 quality_weights=quality_weights)
         report = evaluate(design, reject_threshold=reject_threshold)
         _print_leaderboard(report)
 
     # Train final model and label.
     console.print("[bold]Training final fusion model …[/bold]")
     model = train_final(train_faces, embeddings_by_backbone, scene_backbones,
-                        photo_map, gps_map, k=folds, top_k=top_k)
+                        photo_map, gps_map, k=folds, top_k=top_k,
+                        quality_weights=quality_weights)
 
     targets = untagged + unknown + (known if audit_tagged else [])
     console.print(f"[bold]Labeling {len(targets):,} faces[/bold] "
