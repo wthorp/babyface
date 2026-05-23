@@ -316,11 +316,12 @@ class DataStore:
         # Try real photo first (if photo_root is set)
         if self.photo_root:
             try:
-                from PIL import Image
+                from PIL import Image, ImageOps
                 import io
                 photo_path = self.photo_root / pred.album_path.lstrip("/") / pred.filename
                 if photo_path.exists():
-                    img = Image.open(photo_path).convert("RGB")
+                    # DigiKam stores bbox in display-space (after EXIF rotation)
+                    img = ImageOps.exif_transpose(Image.open(photo_path)).convert("RGB")
                     x, y, w, h = pred.bbox
                     pad = int(max(w, h) * 0.2)
                     crop = img.crop((max(0, x-pad), max(0, y-pad),
@@ -418,12 +419,13 @@ class DataStore:
         if face is None or not self.photo_root:
             return None
         try:
-            from PIL import Image
+            from PIL import Image, ImageOps
             import io
             photo_path = self.photo_root / face.album_path.lstrip("/") / face.filename
             if not photo_path.exists():
                 return None
-            img = Image.open(photo_path).convert("RGB")
+            # DigiKam stores bbox in display-space (after EXIF rotation)
+            img = ImageOps.exif_transpose(Image.open(photo_path)).convert("RGB")
             x, y, w, h = face.bbox
             pad = int(max(w, h) * 0.2)
             crop = img.crop((max(0, x - pad), max(0, y - pad),
