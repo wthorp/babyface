@@ -195,7 +195,45 @@ def _lgbm_params() -> dict:
                 verbose=-1, n_jobs=-1)
 
 
-def evaluate(d: CrossfitDesign, reject_threshold: float = 0.5) -> EvalReport:
+def _siglip_cascade(
+    score: np.ndarray,
+    d: CrossfitDesign,
+    siglip_certainty: float,
+) -> np.ndarray:
+    """
+    For faces where the top-1 SigLIP candidate leads the top-2 by more than
+    `siglip_certainty`, override the GBM score with SigLIP-derived scores.
+    This keeps DINOv2 out of clear-cut cases where SigLIP is authoritative.
+    """
+    siglip_cols = [i for i, n in enumerate(d.feature_names) if "siglip" in n.lower()]
+    if not siglip_cols:
+        return score
+    sc = d.X[:, siglip_cols[0]]        # raw SigLIP similarities
+
+    out = score.copy()
+    by_face: dict[int, list[int]] = {}
+    for r in range(len(d.y)):
+        by_face.setdefault(int(d.face_id[r]), []).append(r)
+
+    for fi, rows in by_face.items():
+        sv = np.nan_to_num(sc[rows], nan=-np.inf)
+        order = np.argsort(sv)[::-1]
+        if len(order) < 2:
+            continue
+        margin = sv[order[0]] - sv[order[1]]
+        if margin >= siglip_certainty:
+            # Use SigLIP similarity values directly — top-1 stays highest-scored
+            top = sv[order[0]]
+            for i, r in enumerate(rows):
+                out[r] = 0.85 * (sv[i] / top) if (top > 0 and sv[i] > 0) else max(0.0, sv[i])
+    return out
+
+
+def evaluate(
+    d: CrossfitDesign,
+    reject_threshold: float = 0.5,
+    siglip_certainty: float = 0.0,
+) -> EvalReport:
     """Out-of-fold fused accuracy + single-model baselines, stratified."""
     try:
         import lightgbm as lgb
@@ -209,6 +247,8 @@ def evaluate(d: CrossfitDesign, reject_threshold: float = 0.5) -> EvalReport:
         clf = lgb.LGBMClassifier(**_lgbm_params())
         clf.fit(d.X[tr], d.y[tr])
         oof[te] = clf.predict_proba(d.X[te])[:, 1]
+    if siglip_certainty > 0.0:
+        oof = _siglip_cascade(oof, d, siglip_certainty)
     fused = _per_face_accuracy(oof, d, mask=np.ones(len(d.y), bool),
                                reject_threshold=reject_threshold)
 
@@ -249,6 +289,7 @@ class FusionModel:
     identity_models: dict         # built from ALL tagged faces
     feature_names: list[str]
     scene_backbones: set[str]
+    siglip_certainty: float = 0.0  # cascade: use SigLIP directly when margin >= this
 
 
 def train_final(
@@ -261,6 +302,7 @@ def train_final(
     seed: int = 42,
     top_k: int = 15,
     quality_weights: dict | None = None,
+    siglip_certainty: float = 0.0,
 ) -> FusionModel:
     """Cross-fit rows (for an inference-matched training distribution), fit the
     GBM on all of them, and refit identity models on every tagged face."""
@@ -272,4 +314,5 @@ def train_final(
     full_models = build_identity_models(tagged_faces, embeddings_by_backbone,
                                         scene_backbones, photo_map, gps_map,
                                         quality_weights=quality_weights)
-    return FusionModel(clf, full_models, d.feature_names, scene_backbones)
+    return FusionModel(clf, full_models, d.feature_names, scene_backbones,
+                       siglip_certainty=siglip_certainty)

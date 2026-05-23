@@ -59,6 +59,30 @@ def score_faces(
     else:
         X = ft.X
     proba = model.booster.predict_proba(X)[:, 1]
+
+    # SigLIP certainty cascade: for faces where SigLIP's top-1 margin exceeds the
+    # threshold, replace GBM probabilities with SigLIP-derived scores so DINOv2
+    # cannot override a clear-cut SigLIP decision.
+    siglip_certainty = getattr(model, "siglip_certainty", 0.0)
+    if siglip_certainty > 0.0:
+        siglip_cols = [i for i, n in enumerate(ft.feature_names) if "siglip" in n.lower()]
+        if siglip_cols:
+            sc = ft.X[:, siglip_cols[0]]
+            # Group row indices by (photo_id, face_idx)
+            by_face: dict[tuple[int, int], list[int]] = {}
+            for r, (pid, fidx, _) in enumerate(ft.rows):
+                by_face.setdefault((pid, fidx), []).append(r)
+            for rows in by_face.values():
+                sv = np.nan_to_num(sc[rows], nan=-np.inf)
+                order = np.argsort(sv)[::-1]
+                if len(order) < 2:
+                    continue
+                margin = float(sv[order[0]] - sv[order[1]])
+                if margin >= siglip_certainty:
+                    top = sv[order[0]]
+                    for i, r in enumerate(rows):
+                        proba[r] = 0.85 * (sv[i] / top) if (top > 0 and sv[i] > 0) else max(0.0, sv[i])
+
     out: dict[tuple[int, int], dict[str, float]] = {}
     for (pid, fidx, name), p in zip(ft.rows, proba):
         out.setdefault((pid, fidx), {})[name] = float(p)

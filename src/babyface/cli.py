@@ -393,6 +393,9 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
               help="0 = coherence flags advisory only; >0 soft-down-weights incoherent pairs.")
 @click.option("--ambiguous-margin", default=0.10, type=float, show_default=True,
               help="Flag as ambiguous when top-2 score is within this many pp of top-1 (0=off).")
+@click.option("--siglip-certainty", default=0.0, type=float, show_default=True,
+              help="SigLIP cascade: when SigLIP top-1 margin >= this, use SigLIP scores directly "
+                   "(bypasses DINOv2/GBM for clear-cut cases). Suggested: 0.05.")
 @click.option("--min-face-px",   default=48, type=int, show_default=True,
               help="Skip faces whose width or height is below this many pixels (0=all).")
 @click.option("--top-k",         default=15, type=int, show_default=True,
@@ -412,7 +415,7 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
 @click.option("--export-html",   default=None, type=Path, help="Write a review gallery to PATH.")
 @click.option("--writeback",     default=None, type=Path, help="Write predictions to PATH (.json/.csv).")
 def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_lambda,
-          ambiguous_margin, min_face_px, top_k, folds, eval, audit_tagged,
+          ambiguous_margin, siglip_certainty, min_face_px, top_k, folds, eval, audit_tagged,
           pseudo_labels, pseudo_label_min_score, quality_cache, export_html, writeback):
     """Late-fusion identity labeling over cached embeddings + EXIF."""
     import lightgbm  # noqa: F401,E402 — must import before torch (macOS OpenMP)
@@ -506,14 +509,16 @@ def label(db, thumbnails_db, photo_root, cache_dir, reject_threshold, coherence_
         design = crossfit_design(train_faces, embeddings_by_backbone, scene_backbones,
                                  photo_map, gps_map, k=folds, top_k=top_k,
                                  quality_weights=quality_weights)
-        report = evaluate(design, reject_threshold=reject_threshold)
+        report = evaluate(design, reject_threshold=reject_threshold,
+                         siglip_certainty=siglip_certainty)
         _print_leaderboard(report)
 
     # Train final model and label.
     console.print("[bold]Training final fusion model …[/bold]")
     model = train_final(train_faces, embeddings_by_backbone, scene_backbones,
                         photo_map, gps_map, k=folds, top_k=top_k,
-                        quality_weights=quality_weights)
+                        quality_weights=quality_weights,
+                        siglip_certainty=siglip_certainty)
 
     targets = untagged + unknown + (known if audit_tagged else [])
     console.print(f"[bold]Labeling {len(targets):,} faces[/bold] "
