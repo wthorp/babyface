@@ -21,6 +21,10 @@ Features per row
   geo_km           min great-circle km to the identity's geotagged photos
                    (NaN when either side lacks GPS — only ~10% have it)
   id_log_prior     log count of the identity's tagged faces (base rate)
+  album_person_match  1 if the candidate's first-name token appears as a whole word
+                   in this photo's album path (e.g. "lisa" in "Lisa's 30th Bday").
+                   Conservative: skips kinship titles (grandpa/uncle/…), requires
+                   ≥3 chars. ~7% of photos are in person-named albums.
 
 Centroids, date spans, camera histograms and GPS points are all built from the
 *train* split only (passed in via `train_records`) so evaluation stays honest.
@@ -32,6 +36,7 @@ and (photo_id, -1) for scene models (one per image, shared by its faces); the
 from __future__ import annotations
 
 import math
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -43,6 +48,24 @@ import numpy as np
 _EPOCH = datetime(2000, 1, 1)
 _UNKNOWN_TAGS = {"unknown", "unidentified", ""}   # treated as the reject class
 N_SUBCENTROIDS = 3   # k-means clusters per identity per face backbone
+
+# Album-name person matching
+_TITLE_PREFIXES = frozenset({"grandpa", "grandma", "uncle", "aunt", "great", "baby"})
+_RE_NONWORD = re.compile(r'[^a-z0-9]+')
+
+
+def _album_search_token(name: str) -> str:
+    """First meaningful word (>=3 chars, not a kinship title) from an identity name."""
+    words = [w for w in name.lower().split() if len(w) >= 3]
+    for w in words:
+        if w not in _TITLE_PREFIXES:
+            return w
+    return words[-1] if words else ""
+
+
+def _album_word_set(album_path: str) -> frozenset[str]:
+    """Lowercase word tokens from an album path, length >= 3."""
+    return frozenset(w for w in _RE_NONWORD.split(album_path.lower()) if len(w) >= 3)
 
 
 def _days(dt: datetime | None) -> float | None:
@@ -221,7 +244,7 @@ def build_feature_table(
     feat_names = (
         [f"sim_{b}" for b in backbones]
         + ["time_prox", "in_active_range", "camera_p", "camera_seen", "geo_km", "id_log_prior",
-           "in_same_album", "n_same_album_faces"]
+           "in_same_album", "n_same_album_faces", "album_person_match"]
     )
 
     X_rows: list[list[float]] = []
@@ -261,6 +284,7 @@ def build_feature_table(
         pdays = _photo_days(photo) if photo else None
         pcam = photo.camera_model if photo else None
         pgps = gps_map.get(pid)
+        alb_words = _album_word_set(photo.album_path) if photo else frozenset()
 
         for name in candidates:
             m = identity_models[name]
@@ -303,11 +327,14 @@ def build_feature_table(
                 n_same_album = float(m.album_face_counts.get(photo.album_path, 0))
             else:
                 in_same_album, n_same_album = 0.0, 0.0
+            # Album person-name match: candidate's first meaningful name word in album path
+            token = _album_search_token(m.name)
+            album_person_match = 1.0 if token and token in alb_words else 0.0
 
             X_rows.append(sim_feats + [
                 time_prox, in_range, camera_p, camera_seen, geo_km,
                 math.log1p(m.n_faces),
-                in_same_album, n_same_album,
+                in_same_album, n_same_album, album_person_match,
             ])
             if true_name is None:
                 y_rows.append(float("nan"))           # inference row
