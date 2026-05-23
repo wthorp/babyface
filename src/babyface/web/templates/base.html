@@ -18,6 +18,9 @@
       <a href="/clusters" {% if request.url.path == '/clusters' %}class="active"{% endif %}>
         Unknown clusters <span class="badge">{{ stats.n_clusters }}</span>
       </a>
+      <a href="/digikam" {% if request.url.path.startswith('/digikam') %}class="active"{% endif %}>
+        DigiKam labels
+      </a>
       <div class="spacer"></div>
       <div class="stats-bar">
         <span title="Assigned">✓ {{ stats.assigned }}</span>

@@ -141,6 +141,30 @@ def create_app(repo_dir: Path, predictions_file: str = "predictions6.json",
             f'<div class="toast">Assigned {n} faces to <strong>{html.escape(identity)}</strong></div>'
         )
 
+    @app.get("/digikam", response_class=HTMLResponse)
+    async def digikam_index(req: Request):
+        return tmpl("digikam_index.html", req,
+                    identity_names=_STORE.digikam_identity_names(),
+                    total_faces=len(_STORE.digikam_faces))
+
+    @app.get("/digikam/face/{photo_id}/{tag_id}")
+    async def digikam_face_crop(photo_id: int, tag_id: int):
+        result = _STORE.get_digikam_crop_bytes(photo_id, tag_id)
+        if result:
+            data, mime = result
+            return Response(content=data, media_type=mime)
+        return Response(content=_placeholder_svg_dk(photo_id, tag_id),
+                        media_type="image/svg+xml")
+
+    @app.get("/digikam/{name}", response_class=HTMLResponse)
+    async def digikam_identity(req: Request, name: str, page: int = 0):
+        faces, total = _STORE.digikam_faces_for_identity(name, page=page)
+        return tmpl("digikam_identity.html", req,
+                    identity=name,
+                    color=_identity_color(name),
+                    faces=faces,
+                    **page_range(total, page, 50))
+
     @app.post("/retrain")
     async def retrain(req: Request):
         if _STORE.retrain_running:
@@ -268,6 +292,24 @@ def _placeholder_svg(photo_id: int, face_idx: int) -> bytes:
                 font-size="42" font-weight="bold" fill="{color}">{html.escape(initial)}</text>
           <text x="60" y="108" text-anchor="middle" font-family="sans-serif"
                 font-size="12" fill="#666">{html.escape(score)}</text>
+        </svg>
+    """)
+    return svg.encode()
+
+
+def _placeholder_svg_dk(photo_id: int, tag_id: int) -> bytes:
+    face = next(
+        (f for f in _STORE.digikam_faces if f.photo_id == photo_id and f.tag_id == tag_id),
+        None,
+    ) if _STORE else None
+    name = face.name if face else "?"
+    initial = name[0].upper() if name else "?"
+    color = _identity_color(name)
+    svg = textwrap.dedent(f"""\
+        <svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120">
+          <rect width="120" height="120" rx="8" fill="{color}" opacity="0.25"/>
+          <text x="60" y="68" text-anchor="middle" font-family="sans-serif"
+                font-size="42" font-weight="bold" fill="{color}">{html.escape(initial)}</text>
         </svg>
     """)
     return svg.encode()

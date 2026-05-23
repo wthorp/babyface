@@ -1,0 +1,37 @@
+{% extends "base.html" %}
+{% block title %}DigiKam · {{ identity }}{% endblock %}
+{% block content %}
+<div class="page-header">
+  <a href="/digikam" style="color:var(--muted);text-decoration:none;font-size:0.9rem">← DigiKam labels</a>
+  <h1 style="color:{{ color }}">{{ identity }}</h1>
+  <span class="count">{{ total }} faces</span>
+  {% if n_pages > 1 %}
+  <span class="pagination">
+    {% if has_prev %}<a href="?page={{ page - 1 }}">← prev</a>{% endif %}
+    page {{ page + 1 }} / {{ n_pages }}
+    {% if has_next %}<a href="?page={{ page + 1 }}">next →</a>{% endif %}
+  </span>
+  {% endif %}
+</div>
+
+<div class="face-grid">
+  {% for face in faces %}
+  <div class="face-card">
+    <img src="/digikam/face/{{ face.photo_id }}/{{ face.tag_id }}" loading="lazy"
+         width="120" height="120" alt="{{ face.name }}">
+    <div class="face-meta">
+      <div class="face-name" style="color:{{ color }}">{{ face.name }}</div>
+      <div class="face-date">{{ face.date_approx }}</div>
+      <div class="face-album">{{ face.filename }}</div>
+    </div>
+  </div>
+  {% endfor %}
+</div>
+
+{% if n_pages > 1 %}
+<div class="pagination-bottom">
+  {% if has_prev %}<a class="btn" href="?page={{ page - 1 }}">← prev</a>{% endif %}
+  {% if has_next %}<a class="btn" href="?page={{ page + 1 }}">next →</a>{% endif %}
+</div>
+{% endif %}
+{% endblock %}

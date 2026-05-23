@@ -19,6 +19,21 @@ import numpy as np
 
 
 @dataclass
+class DigiKamFace:
+    photo_id: int
+    tag_id: int
+    name: str
+    filename: str
+    album_path: str
+    bbox: list[int]   # [x, y, w, h]
+
+    @property
+    def date_approx(self) -> str:
+        m = re.match(r"/(\d{4}-\d{2}-\d{2})", self.album_path)
+        return m.group(1) if m else self.album_path.lstrip("/")[:10]
+
+
+@dataclass
 class FacePred:
     photo_id: int
     face_idx: int
@@ -320,6 +335,104 @@ class DataStore:
 
     def identity_color(self, name: str) -> str:
         return _identity_color(name or "")
+
+    # ------------------------------------------------------------------
+    # DigiKam ground-truth faces
+    # ------------------------------------------------------------------
+
+    def _load_digikam_faces(self) -> None:
+        """Lazy-load tagged faces from digikam4.db into self._digikam_faces."""
+        db_path = self.repo_dir / "digikam4.db"
+        if not db_path.exists():
+            self._digikam_faces: list[DigiKamFace] = []
+            return
+        con = sqlite3.connect(str(db_path))
+        con.row_factory = sqlite3.Row
+        tag_names = {
+            row["id"]: row["name"]
+            for row in con.execute("SELECT id, name FROM Tags WHERE pid = 4")
+        }
+        import re as _re
+        _rect_re = _re.compile(
+            r'<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)"/>'
+        )
+        faces: list[DigiKamFace] = []
+        for row in con.execute("""
+            SELECT itp.imageid, itp.tagid, itp.value,
+                   i.name AS filename, a.relativePath AS album_path
+            FROM ImageTagProperties itp
+            JOIN Images  i ON i.id = itp.imageid
+            JOIN Albums  a ON a.id = i.album
+            WHERE itp.property = 'autodetectedFace'
+              AND itp.tagid IN ({})
+        """.format(",".join(str(k) for k in tag_names) if tag_names else "NULL")):
+            m = _rect_re.search(row["value"])
+            if not m:
+                continue
+            x, y, w, h = int(m.group(1)), int(m.group(2)), int(m.group(3)), int(m.group(4))
+            person = tag_names.get(row["tagid"], "Unknown")
+            faces.append(DigiKamFace(
+                photo_id=row["imageid"],
+                tag_id=row["tagid"],
+                name=person,
+                filename=row["filename"],
+                album_path=row["album_path"],
+                bbox=[x, y, w, h],
+            ))
+        con.close()
+        self._digikam_faces = faces
+
+    @property
+    def digikam_faces(self) -> list[DigiKamFace]:
+        if not hasattr(self, "_digikam_faces"):
+            self._load_digikam_faces()
+        return self._digikam_faces
+
+    def digikam_identity_names(self) -> list[tuple[str, int, str]]:
+        counts: dict[str, int] = {}
+        for f in self.digikam_faces:
+            counts[f.name] = counts.get(f.name, 0) + 1
+        return sorted(
+            [(n, c, _identity_color(n)) for n, c in counts.items()],
+            key=lambda x: -x[1],
+        )
+
+    def digikam_faces_for_identity(
+        self, name: str, page: int = 0, page_size: int = 50
+    ) -> tuple[list[DigiKamFace], int]:
+        faces = sorted(
+            [f for f in self.digikam_faces if f.name == name],
+            key=lambda f: f.date_approx,
+        )
+        total = len(faces)
+        start = page * page_size
+        return faces[start : start + page_size], total
+
+    def get_digikam_crop_bytes(
+        self, photo_id: int, tag_id: int
+    ) -> Optional[tuple[bytes, str]]:
+        face = next(
+            (f for f in self.digikam_faces if f.photo_id == photo_id and f.tag_id == tag_id),
+            None,
+        )
+        if face is None or not self.photo_root:
+            return None
+        try:
+            from PIL import Image
+            import io
+            photo_path = self.photo_root / face.album_path.lstrip("/") / face.filename
+            if not photo_path.exists():
+                return None
+            img = Image.open(photo_path).convert("RGB")
+            x, y, w, h = face.bbox
+            pad = int(max(w, h) * 0.2)
+            crop = img.crop((max(0, x - pad), max(0, y - pad),
+                             min(img.width, x + w + pad), min(img.height, y + h + pad)))
+            buf = io.BytesIO()
+            crop.save(buf, format="JPEG", quality=85)
+            return buf.getvalue(), "image/jpeg"
+        except Exception:
+            return None
 
     # ------------------------------------------------------------------
     # Clustering

@@ -1,0 +1,23 @@
+{% extends "base.html" %}
+{% block title %}DigiKam labels{% endblock %}
+{% block content %}
+<div class="page-header">
+  <h1>DigiKam labels <small>ground truth</small></h1>
+  <span class="count">{{ identity_names | length }} people · {{ total_faces }} faces</span>
+</div>
+<p class="hint">These are faces tagged directly in DigiKam (not ML predictions). Use this view to verify the source data before evaluating model quality.</p>
+
+<div class="identity-grid">
+  {% for name, count, color in identity_names %}
+  <a class="identity-card" href="/digikam/{{ name | urlencode }}" style="border-top:3px solid {{ color }}">
+    <div class="identity-avatar" style="background:{{ color }}20; color:{{ color }}">
+      {{ name[0].upper() }}
+    </div>
+    <div class="identity-info">
+      <div class="identity-name">{{ name }}</div>
+      <div class="identity-count">{{ count }} faces</div>
+    </div>
+  </a>
+  {% endfor %}
+</div>
+{% endblock %}
