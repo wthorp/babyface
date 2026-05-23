@@ -364,7 +364,7 @@ class DataStore:
             FROM ImageTagProperties itp
             JOIN Images  i ON i.id = itp.imageid
             JOIN Albums  a ON a.id = i.album
-            WHERE itp.property = 'autodetectedFace'
+            WHERE itp.property = 'tagRegion'
               AND itp.tagid IN ({})
         """.format(",".join(str(k) for k in tag_names) if tag_names else "NULL")):
             m = _rect_re.search(row["value"])

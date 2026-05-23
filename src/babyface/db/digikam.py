@@ -142,7 +142,7 @@ def load_photos(
     # Load face rects: imageid → [FaceRegion, …]
     faces_by_image: dict[int, list[FaceRegion]] = {}
     for row in conn.execute(
-        "SELECT imageid, tagid, value FROM ImageTagProperties WHERE property = 'autodetectedFace'"
+        "SELECT imageid, tagid, value FROM ImageTagProperties WHERE property = 'tagRegion'"
     ):
         rect = _parse_rect(row["value"])
         if rect:
