@@ -140,19 +140,47 @@ def load_photos(
     }
 
     # Load face rects: imageid → [FaceRegion, …]
+    # Strategy: tagRegion = user-confirmed identities (ground truth for centroids).
+    # autodetectedFace = all face regions including Unknown/unconfirmed (targets to label).
+    # For each autodetectedFace region, use the confirmed tagRegion identity when available;
+    # otherwise treat as untagged (person_name=None) so the classifier will label it.
     faces_by_image: dict[int, list[FaceRegion]] = {}
+
+    # Step 1: build confirmed (imageid, tagid) → rect map from tagRegion
+    confirmed: dict[tuple[int, int], tuple[int, int, int, int]] = {}
     for row in conn.execute(
         "SELECT imageid, tagid, value FROM ImageTagProperties WHERE property = 'tagRegion'"
     ):
         rect = _parse_rect(row["value"])
         if rect:
-            faces_by_image.setdefault(row["imageid"], []).append(
-                FaceRegion(
-                    tag_id=row["tagid"],
-                    person_name=tag_names.get(row["tagid"]),
-                    x=rect[0], y=rect[1], width=rect[2], height=rect[3],
-                )
+            confirmed[(row["imageid"], row["tagid"])] = rect
+
+    # Step 2: walk all autodetectedFace regions; use confirmed identity or None
+    _UNCONFIRMED = {"unknown", "unconfirmed", ""}
+    for row in conn.execute(
+        "SELECT imageid, tagid, value FROM ImageTagProperties WHERE property = 'autodetectedFace'"
+    ):
+        rect = _parse_rect(row["value"])
+        if not rect:
+            continue
+        key = (row["imageid"], row["tagid"])
+        raw_name = tag_names.get(row["tagid"])
+        if key in confirmed:
+            # User-confirmed: use as ground truth
+            person_name = raw_name
+        elif raw_name and raw_name.lower() not in _UNCONFIRMED:
+            # autodetected suggestion that was never confirmed — treat as untagged
+            person_name = None
+        else:
+            # Unknown / Unconfirmed tag — keep as-is so CLI routes to 'unknown' bucket
+            person_name = raw_name
+        faces_by_image.setdefault(row["imageid"], []).append(
+            FaceRegion(
+                tag_id=row["tagid"],
+                person_name=person_name,
+                x=rect[0], y=rect[1], width=rect[2], height=rect[3],
             )
+        )
 
     photos: list[Photo] = []
     query = """
