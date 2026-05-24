@@ -20,7 +20,7 @@ echo "--- Step 1: re-embed all photos with EXIF orientation fix ---"
   --db digikam4.db \
   --photo-root /data/photos/photos \
   --cache-dir embeddings \
-  --backbones dinov2 siglip
+  -b dinov2 -b siglip
 
 echo "--- Step 2: retrain fusion + label with run10 pseudo-labels ---"
 "$VENV_PY" -m babyface.cli label \
