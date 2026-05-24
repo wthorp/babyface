@@ -309,13 +309,14 @@ def open_photo_image(photo: Photo, thumbnails_db: Path = THUMBNAILS_DB):
     """
     Return a PIL Image for a photo, preferring full-res but falling back
     to the local thumbnail BLOB when the network share is unavailable.
+    EXIF orientation is applied so callers get correctly-rotated pixels.
     """
-    from PIL import Image
+    from PIL import Image, ImageOps
     import io
 
     if photo.full_path.exists():
         try:
-            return Image.open(photo.full_path)
+            return ImageOps.exif_transpose(Image.open(photo.full_path))
         except Exception:
             pass
 
@@ -323,7 +324,7 @@ def open_photo_image(photo: Photo, thumbnails_db: Path = THUMBNAILS_DB):
         blob = load_thumbnail(photo.unique_hash, photo.file_size, thumbnails_db)
         if blob:
             try:
-                return Image.open(io.BytesIO(blob))
+                return ImageOps.exif_transpose(Image.open(io.BytesIO(blob)))
             except Exception:
                 pass
 

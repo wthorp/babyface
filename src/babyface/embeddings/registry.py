@@ -32,7 +32,7 @@ from pathlib import Path
 from typing import Callable, Literal
 
 import torch
-from PIL import Image
+from PIL import Image, ImageOps
 
 InputKind = Literal["face_crop", "whole_image"]
 BackboneKind = Literal["patch", "face", "scene"]
@@ -323,6 +323,7 @@ def embed_photos(
                     Image.open(photo.full_path) if photo.full_path.exists() else None)
                 if img is None:
                     continue
+                img = ImageOps.exif_transpose(img)
                 img_rgb = img.convert("RGB")
                 del img  # free the original; img_rgb may still be full-res
             except Exception:
