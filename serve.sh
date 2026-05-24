@@ -21,7 +21,7 @@ if [ -d "$TORCH_LIB" ]; then
 fi
 
 exec "$VENV_PY" -m babyface.cli web \
-  --predictions predictions10.json \
+  --predictions predictions11.json \
   --photo-root /data/photos/photos \
   --host 0.0.0.0 \
   --port 8080 \
