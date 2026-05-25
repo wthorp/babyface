@@ -338,7 +338,7 @@ def cluster(
               help="Directory for per-model embedding caches (emb_<id>.pt).")
 @click.option("--backbones", "-b", multiple=True, default=("dinov2",), show_default=True,
               help="Backbone keys to embed. Repeatable. Known: dinov2, arcface, siglip.")
-@click.option("--device",        default="cpu", show_default=True, help="cpu, cuda, or mps.")
+@click.option("--device",        default=None, show_default=True, help="cpu, cuda, mps, or auto-detected if omitted.")
 @click.option("--limit",         default=0, type=int, show_default=True,
               help="Embed only the first N photos (0 = all).")
 def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
@@ -359,7 +359,7 @@ def embed(db, thumbnails_db, photo_root, cache_dir, backbones, device, limit):
         if key not in reg.REGISTRY:
             console.print(f"[red]Unknown backbone {key!r}; known: {sorted(reg.REGISTRY)}[/red]")
             continue
-        console.print(f"[bold]Loading backbone[/bold] {key} (device={device}) …")
+        console.print(f"[bold]Loading backbone[/bold] {key} (device={device or 'auto'}) …")
         try:
             backbone = reg.get_backbone(key, device=device)
         except ImportError as e:

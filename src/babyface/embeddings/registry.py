@@ -35,6 +35,15 @@ import torch
 from PIL import Image, ImageOps
 
 InputKind = Literal["face_crop", "whole_image"]
+
+
+def _best_device() -> str:
+    """Return the best available device: cuda > mps > cpu."""
+    if torch.cuda.is_available():
+        return "cuda"
+    if getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+        return "mps"
+    return "cpu"
 BackboneKind = Literal["patch", "face", "scene"]
 
 
@@ -80,7 +89,10 @@ class DinoV2Backbone(Backbone):
     def __init__(self, device: str | torch.device | None = None,
                  model_name: str = "vit_base_patch14_dinov2.lvd142m"):
         from .extract import EmbeddingExtractor  # local import: heavy (timm)
+        if device is None:
+            device = _best_device()
         self.id = f"dinov2:{model_name}"
+        print(f"  device: {device}", flush=True)
         self._extractor = EmbeddingExtractor(device=device)
         # vit_base = 768; resolve from the loaded model so larger variants work.
         self.dim = int(self._extractor.model.num_features)
@@ -115,9 +127,10 @@ class SiglipSceneBackbone(Backbone):
                 "Install with: uv add transformers"
             ) from e
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            device = _best_device()
         self.device = torch.device(device)
         self.id = f"siglip:{model_name}"
+        print(f"  device: {device}", flush=True)
         self._model = AutoModel.from_pretrained(model_name).to(self.device).eval()
         self._processor = AutoProcessor.from_pretrained(model_name)
         self.dim = int(self._model.config.vision_config.hidden_size)
@@ -167,9 +180,11 @@ class ArcFaceBackbone(Backbone):
                 "ArcFaceBackbone needs `insightface` + `onnxruntime`. "
                 "Install with: uv add insightface onnxruntime"
             ) from e
+        if device is None:
+            device = _best_device()
         self.id = f"arcface:{model_name}"
-        dev = str(device) if device is not None else (
-            "cuda" if torch.cuda.is_available() else "cpu")
+        dev = str(device)
+        print(f"  device: {dev}", flush=True)
         providers = (["CUDAExecutionProvider", "CPUExecutionProvider"]
                      if "cuda" in dev else ["CPUExecutionProvider"])
         self._app = FaceAnalysis(name=model_name, providers=providers)

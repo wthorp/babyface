@@ -78,7 +78,13 @@ class EmbeddingExtractor:
 
     def __init__(self, device: str | torch.device | None = None):
         if device is None:
-            device = "cuda" if torch.cuda.is_available() else "cpu"
+            import torch as _t
+            if _t.cuda.is_available():
+                device = "cuda"
+            elif getattr(_t.backends, "mps", None) and _t.backends.mps.is_available():
+                device = "mps"
+            else:
+                device = "cpu"
         self.device = torch.device(device)
         self.model, self.transform = _load_model(self.device)
 
