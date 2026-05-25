@@ -87,3 +87,8 @@ Desktop.ini
 /predictions.json
 /predictions.csv
 /embeddings/
+predictions*.json
+review*.html
+*.log
+weights_run*/
+embeddings_run*.zip
